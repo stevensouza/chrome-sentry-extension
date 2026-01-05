@@ -1,0 +1,41 @@
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# Windows
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# Node (if we add build tools later)
+node_modules/
+npm-debug.log
+yarn-error.log
+
+# Build output
+dist/
+build/
+*.zip
+
+# Local development
+.env
+.env.local
+*.local
+
+# Logs
+*.log
+
+# Chrome extension packaging
+*.crx
+*.pem
+
+# Claude Code local settings
+.claude/

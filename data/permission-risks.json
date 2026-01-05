@@ -1,0 +1,164 @@
+{
+  "permissions": {
+    "<all_urls>": {
+      "weight": 30,
+      "level": "high",
+      "description": "Can read and modify all data on all websites you visit",
+      "explanation": "This extension has full access to every website. It can read your passwords, see your browsing activity, and modify page content."
+    },
+    "webRequestBlocking": {
+      "weight": 25,
+      "level": "high",
+      "description": "Can intercept, block, and modify network requests",
+      "explanation": "This extension can see and modify all network traffic, including potentially sensitive data sent to websites."
+    },
+    "debugger": {
+      "weight": 25,
+      "level": "high",
+      "description": "Can access Chrome's debugging protocol",
+      "explanation": "This is a very powerful permission that allows inspecting and controlling other tabs. Only trusted developer tools should have this."
+    },
+    "nativeMessaging": {
+      "weight": 20,
+      "level": "high",
+      "description": "Can communicate with programs installed on your computer",
+      "explanation": "This extension can send and receive data from native applications, potentially allowing it to execute code outside the browser."
+    },
+    "webRequest": {
+      "weight": 15,
+      "level": "medium",
+      "description": "Can observe network traffic",
+      "explanation": "This extension can see URLs and metadata for all network requests, though it cannot modify them without webRequestBlocking."
+    },
+    "cookies": {
+      "weight": 15,
+      "level": "medium",
+      "description": "Can read and modify cookies",
+      "explanation": "This extension can access your cookies, which could be used to impersonate your logged-in sessions on websites."
+    },
+    "proxy": {
+      "weight": 15,
+      "level": "medium",
+      "description": "Can route traffic through proxy servers",
+      "explanation": "This extension can redirect your network traffic through external servers, potentially exposing your browsing data."
+    },
+    "privacy": {
+      "weight": 10,
+      "level": "medium",
+      "description": "Can change privacy-related settings",
+      "explanation": "This extension can modify your browser's privacy settings, such as Do Not Track and safe browsing protection."
+    },
+    "management": {
+      "weight": 10,
+      "level": "medium",
+      "description": "Can manage other extensions",
+      "explanation": "This extension can enable, disable, or uninstall other extensions, which could be used to disable security tools."
+    },
+    "downloads": {
+      "weight": 8,
+      "level": "medium",
+      "description": "Can initiate downloads and access download history",
+      "explanation": "This extension can download files to your computer and see your download history."
+    },
+    "history": {
+      "weight": 5,
+      "level": "low",
+      "description": "Can read your browsing history",
+      "explanation": "This extension can see which websites you've visited, which is a privacy concern but limited security risk."
+    },
+    "tabs": {
+      "weight": 5,
+      "level": "low",
+      "description": "Can see your open tabs",
+      "explanation": "This extension can see the URLs and titles of your open tabs, which may reveal your browsing activity."
+    },
+    "bookmarks": {
+      "weight": 3,
+      "level": "low",
+      "description": "Can read and modify bookmarks",
+      "explanation": "This extension can access your bookmarks, which is a minor privacy concern."
+    },
+    "storage": {
+      "weight": 0,
+      "level": "safe",
+      "description": "Can store data locally",
+      "explanation": "This is a standard permission that allows the extension to save its settings and data."
+    },
+    "alarms": {
+      "weight": 0,
+      "level": "safe",
+      "description": "Can schedule tasks",
+      "explanation": "This is a standard permission for running periodic background tasks."
+    },
+    "notifications": {
+      "weight": 0,
+      "level": "safe",
+      "description": "Can show notifications",
+      "explanation": "This is a standard permission for displaying desktop notifications."
+    },
+    "contextMenus": {
+      "weight": 0,
+      "level": "safe",
+      "description": "Can add right-click menu items",
+      "explanation": "This is a standard permission for adding items to the browser's context menu."
+    },
+    "activeTab": {
+      "weight": 2,
+      "level": "low",
+      "description": "Can access current tab when clicked",
+      "explanation": "This extension can only access the current tab when you explicitly click on it. This is much safer than broad tab access."
+    }
+  },
+  "installTypes": {
+    "normal": {
+      "weight": 0,
+      "label": "Chrome Web Store",
+      "description": "Installed from the official Chrome Web Store",
+      "safe": true
+    },
+    "development": {
+      "weight": 15,
+      "label": "Developer Mode",
+      "description": "Loaded in developer mode (unpacked extension)",
+      "safe": false
+    },
+    "sideload": {
+      "weight": 20,
+      "label": "Sideloaded",
+      "description": "Installed from outside the Chrome Web Store",
+      "safe": false
+    },
+    "admin": {
+      "weight": 5,
+      "label": "Enterprise Policy",
+      "description": "Installed by your organization's IT policy",
+      "safe": true
+    },
+    "other": {
+      "weight": 10,
+      "label": "Unknown Source",
+      "description": "Installation source could not be determined",
+      "safe": false
+    }
+  },
+  "riskLevels": {
+    "high": {
+      "threshold": 51,
+      "color": "#ef4444",
+      "label": "High Risk",
+      "description": "This extension has permissions that could pose significant security or privacy risks."
+    },
+    "medium": {
+      "threshold": 21,
+      "color": "#f59e0b",
+      "label": "Medium Risk",
+      "description": "This extension has some permissions that warrant attention."
+    },
+    "low": {
+      "threshold": 0,
+      "color": "#22c55e",
+      "label": "Low Risk",
+      "description": "This extension has minimal permissions and poses low risk."
+    }
+  }
+}

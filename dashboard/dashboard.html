@@ -1,0 +1,159 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Extension Security Auditor - Dashboard</title>
+  <link rel="stylesheet" href="dashboard.css">
+</head>
+<body>
+  <div class="dashboard-container">
+    <!-- Sidebar -->
+    <aside class="sidebar">
+      <div class="sidebar-header">
+        <h1>Security Auditor</h1>
+      </div>
+      <nav class="sidebar-nav">
+        <a href="#" class="nav-item active" data-tab="overview">
+          <span class="nav-icon">&#9632;</span>
+          Overview
+        </a>
+        <a href="#" class="nav-item" data-tab="extensions">
+          <span class="nav-icon">&#9881;</span>
+          Extensions
+        </a>
+      </nav>
+      <div class="sidebar-footer">
+        <span class="version">v1.0.0</span>
+      </div>
+    </aside>
+
+    <!-- Main Content -->
+    <main class="main-content">
+      <!-- Overview Tab -->
+      <section id="overview-tab" class="tab-content active">
+        <header class="content-header">
+          <h2>Security Overview</h2>
+          <p>Summary of your browser extension security status</p>
+        </header>
+
+        <div class="overview-grid">
+          <!-- Overall Score Card -->
+          <div class="card score-card">
+            <div class="card-header">
+              <h3>Security Score</h3>
+            </div>
+            <div class="card-body">
+              <div class="score-display">
+                <span class="score-value" id="overall-score">--</span>
+                <span class="score-max">/100</span>
+              </div>
+              <div class="score-bar">
+                <div class="score-bar-fill" id="score-bar-fill"></div>
+              </div>
+              <p class="score-description" id="score-description">Calculating...</p>
+            </div>
+          </div>
+
+          <!-- Risk Breakdown Card -->
+          <div class="card risk-card">
+            <div class="card-header">
+              <h3>Risk Breakdown</h3>
+            </div>
+            <div class="card-body">
+              <div class="risk-stats">
+                <div class="risk-stat high">
+                  <span class="risk-count" id="high-count">0</span>
+                  <span class="risk-label">High Risk</span>
+                </div>
+                <div class="risk-stat medium">
+                  <span class="risk-count" id="medium-count">0</span>
+                  <span class="risk-label">Medium Risk</span>
+                </div>
+                <div class="risk-stat low">
+                  <span class="risk-count" id="low-count">0</span>
+                  <span class="risk-label">Low Risk</span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Quick Actions Card -->
+          <div class="card actions-card">
+            <div class="card-header">
+              <h3>Quick Actions</h3>
+            </div>
+            <div class="card-body">
+              <button class="action-btn" id="scan-btn">
+                Scan All Extensions
+              </button>
+              <button class="action-btn secondary" id="export-btn">
+                Export Report
+              </button>
+            </div>
+          </div>
+
+          <!-- Extension Summary Card -->
+          <div class="card summary-card">
+            <div class="card-header">
+              <h3>Extension Summary</h3>
+            </div>
+            <div class="card-body">
+              <div class="summary-stats">
+                <div class="summary-stat">
+                  <span class="stat-value" id="total-extensions">0</span>
+                  <span class="stat-label">Total Extensions</span>
+                </div>
+                <div class="summary-stat">
+                  <span class="stat-value" id="enabled-extensions">0</span>
+                  <span class="stat-label">Enabled</span>
+                </div>
+                <div class="summary-stat">
+                  <span class="stat-value" id="disabled-extensions">0</span>
+                  <span class="stat-label">Disabled</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Extensions Tab -->
+      <section id="extensions-tab" class="tab-content">
+        <header class="content-header">
+          <h2>Installed Extensions</h2>
+          <p>Review security risks for each extension</p>
+        </header>
+
+        <div class="extensions-toolbar">
+          <div class="search-box">
+            <input type="text" id="search-input" placeholder="Search extensions...">
+          </div>
+          <div class="filter-controls">
+            <select id="risk-filter">
+              <option value="all">All Risk Levels</option>
+              <option value="high">High Risk</option>
+              <option value="medium">Medium Risk</option>
+              <option value="low">Low Risk</option>
+            </select>
+            <select id="status-filter">
+              <option value="all">All Status</option>
+              <option value="enabled">Enabled</option>
+              <option value="disabled">Disabled</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="extensions-list" id="extensions-list">
+          <!-- Extensions will be populated here -->
+          <div class="loading-state">
+            <p>Loading extensions...</p>
+          </div>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <script src="dashboard.js"></script>
+</body>
+</html>

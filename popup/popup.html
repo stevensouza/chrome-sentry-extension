@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Extension Security Auditor</title>
+  <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+  <div class="popup-container">
+    <header class="popup-header">
+      <h1>Extension Security Auditor</h1>
+    </header>
+
+    <main class="popup-content">
+      <div class="summary-section">
+        <div class="overall-score">
+          <span class="score-label">Security Score</span>
+          <span class="score-value" id="overall-score">--</span>
+          <span class="score-indicator" id="score-indicator"></span>
+        </div>
+
+        <div class="quick-stats">
+          <div class="stat-item high-risk">
+            <span class="stat-icon">!</span>
+            <span class="stat-count" id="high-risk-count">0</span>
+            <span class="stat-label">High Risk</span>
+          </div>
+          <div class="stat-item medium-risk">
+            <span class="stat-icon">!</span>
+            <span class="stat-count" id="medium-risk-count">0</span>
+            <span class="stat-label">Medium Risk</span>
+          </div>
+          <div class="stat-item low-risk">
+            <span class="stat-icon">✓</span>
+            <span class="stat-count" id="low-risk-count">0</span>
+            <span class="stat-label">Low Risk</span>
+          </div>
+        </div>
+
+        <div class="total-extensions">
+          <span id="total-count">0</span> extensions installed
+        </div>
+      </div>
+    </main>
+
+    <footer class="popup-footer">
+      <button id="open-dashboard" class="btn-primary">
+        Open Full Dashboard
+      </button>
+    </footer>
+  </div>
+
+  <script src="popup.js"></script>
+</body>
+</html>
