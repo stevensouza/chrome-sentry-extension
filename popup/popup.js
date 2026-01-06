@@ -27,9 +27,9 @@ async function loadQuickStats() {
     // Get all installed extensions
     const extensions = await chrome.management.getAll();
 
-    // Filter to only extensions (not themes, apps, etc.)
+    // Filter to only extensions (including this extension for full transparency)
     const extensionsOnly = extensions.filter(ext =>
-      ext.type === 'extension' && ext.id !== chrome.runtime.id
+      ext.type === 'extension'
     );
 
     // Calculate risk levels for each extension
@@ -75,8 +75,7 @@ async function loadQuickStats() {
 }
 
 /**
- * Quick risk score calculation for popup summary
- * Full calculation is in lib/risk-scorer.js for dashboard
+ * Comprehensive risk score calculation (synced with dashboard)
  */
 function calculateQuickRiskScore(extension) {
   let score = 0;
@@ -84,31 +83,54 @@ function calculateQuickRiskScore(extension) {
   const permissions = extension.permissions || [];
   const hostPermissions = extension.hostPermissions || [];
 
-  // High-risk permissions
+  // Host permissions (most dangerous)
   if (hostPermissions.includes('<all_urls>') ||
       hostPermissions.some(h => h.includes('*://*/*'))) {
     score += 30;
+  } else if (hostPermissions.some(h => h.includes('*'))) {
+    score += 15;
   }
 
-  if (permissions.includes('webRequest')) score += 15;
-  if (permissions.includes('webRequestBlocking')) score += 25;
-  if (permissions.includes('debugger')) score += 25;
-  if (permissions.includes('nativeMessaging')) score += 20;
-  if (permissions.includes('cookies')) score += 15;
-  if (permissions.includes('proxy')) score += 15;
+  // High-risk permissions
+  const highRiskPerms = {
+    'webRequestBlocking': 25,
+    'debugger': 25,
+    'nativeMessaging': 20,
+    'webRequest': 15,
+    'cookies': 15,
+    'proxy': 15,
+    'privacy': 10
+  };
 
   // Medium-risk permissions
-  if (permissions.includes('management')) score += 10;
-  if (permissions.includes('history')) score += 5;
-  if (permissions.includes('tabs')) score += 5;
+  const mediumRiskPerms = {
+    'management': 10,
+    'tabs': 5,
+    'history': 5,
+    'bookmarks': 3,
+    'downloads': 5,
+    'geolocation': 5
+  };
+
+  permissions.forEach(perm => {
+    if (highRiskPerms[perm]) {
+      score += highRiskPerms[perm];
+    } else if (mediumRiskPerms[perm]) {
+      score += mediumRiskPerms[perm];
+    }
+  });
 
   // Installation source risk
-  if (extension.installType === 'development') {
-    score += 15;
-  } else if (extension.installType === 'sideload') {
-    score += 20;
-  } else if (extension.installType !== 'normal') {
-    score += 10;
+  switch (extension.installType) {
+    case 'development':
+      score += 15;
+      break;
+    case 'sideload':
+      score += 20;
+      break;
+    case 'other':
+      score += 10;
+      break;
   }
 
   // Cap at 100

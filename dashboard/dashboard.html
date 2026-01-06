@@ -59,18 +59,19 @@
           <div class="card risk-card">
             <div class="card-header">
               <h3>Risk Breakdown</h3>
+              <p class="card-hint">Click to filter extensions by risk level</p>
             </div>
             <div class="card-body">
               <div class="risk-stats">
-                <div class="risk-stat high">
+                <div class="risk-stat high clickable" data-risk="high" title="Click to view high-risk extensions">
                   <span class="risk-count" id="high-count">0</span>
                   <span class="risk-label">High Risk</span>
                 </div>
-                <div class="risk-stat medium">
+                <div class="risk-stat medium clickable" data-risk="medium" title="Click to view medium-risk extensions">
                   <span class="risk-count" id="medium-count">0</span>
                   <span class="risk-label">Medium Risk</span>
                 </div>
-                <div class="risk-stat low">
+                <div class="risk-stat low clickable" data-risk="low" title="Click to view low-risk extensions">
                   <span class="risk-count" id="low-count">0</span>
                   <span class="risk-label">Low Risk</span>
                 </div>
@@ -100,20 +101,105 @@
             </div>
             <div class="card-body">
               <div class="summary-stats">
-                <div class="summary-stat">
+                <div class="summary-stat clickable" data-filter="all" title="View all extensions">
                   <span class="stat-value" id="total-extensions">0</span>
                   <span class="stat-label">Total Extensions</span>
                 </div>
-                <div class="summary-stat">
+                <div class="summary-stat clickable" data-filter="enabled" title="View enabled extensions">
                   <span class="stat-value" id="enabled-extensions">0</span>
                   <span class="stat-label">Enabled</span>
                 </div>
-                <div class="summary-stat">
+                <div class="summary-stat clickable" data-filter="disabled" title="View disabled extensions">
                   <span class="stat-value" id="disabled-extensions">0</span>
                   <span class="stat-label">Disabled</span>
                 </div>
               </div>
             </div>
+          </div>
+        </div>
+
+        <!-- Risk Scoring Reference -->
+        <div class="reference-section">
+          <div class="reference-header">
+            <h2>Risk Scoring Reference</h2>
+            <p>Understanding how extension security scores are calculated</p>
+          </div>
+
+          <div class="score-explanation">
+            <h3>What Your Security Score Means</h3>
+            <div class="score-ranges">
+              <div class="score-range good">
+                <span class="range-label">80-100</span>
+                <span class="range-desc"><strong>Good Security:</strong> Your extensions have minimal security risks. Continue monitoring new installations.</span>
+              </div>
+              <div class="score-range moderate">
+                <span class="range-label">50-79</span>
+                <span class="range-desc"><strong>Moderate Risk:</strong> Some extensions have elevated permissions. Review high-risk extensions and verify you trust their developers.</span>
+              </div>
+              <div class="score-range poor">
+                <span class="range-label">0-49</span>
+                <span class="range-desc"><strong>High Risk:</strong> Multiple high-risk extensions detected. Disable unnecessary extensions and only keep those from trusted sources.</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="algorithm-explanation">
+            <h3>How Your Score is Calculated</h3>
+            <div class="algorithm-steps">
+              <div class="algorithm-step">
+                <span class="step-number">1</span>
+                <div class="step-content">
+                  <strong>Individual Extension Risk Scores</strong>
+                  <p>Each extension receives a risk score (0-100) by adding up points from the Permission Risk Values table below. For example, an extension with "history" permission (+5) and "Developer Mode" install (+15) gets a risk score of 20.</p>
+                </div>
+              </div>
+              <div class="algorithm-step">
+                <span class="step-number">2</span>
+                <div class="step-content">
+                  <strong>Calculate Average Risk</strong>
+                  <p>We average the risk scores across all your extensions. If you have 8 extensions with risk scores of 50, 25, 15, 10, 5, 3, 2, and 0, the average risk is (50+25+15+10+5+3+2+0) ÷ 8 = 13.75</p>
+                </div>
+              </div>
+              <div class="algorithm-step">
+                <span class="step-number">3</span>
+                <div class="step-content">
+                  <strong>Your Overall Security Score</strong>
+                  <p>Security Score = 100 - Average Risk. Using the example above: 100 - 13.75 = 86.25 (displayed as 86). A higher score means better security!</p>
+                </div>
+              </div>
+            </div>
+            <div class="algorithm-note">
+              <strong>Why this works:</strong> Even if you have one high-risk extension (50 points), several low-risk extensions will keep your overall score high. This reflects your overall browser security posture, not just the worst-case scenario.
+            </div>
+          </div>
+
+          <div class="reference-table-container">
+            <h3>Permission Risk Values</h3>
+            <p class="section-description">Click column headers to sort</p>
+            <table class="reference-table" id="reference-table">
+              <thead>
+                <tr>
+                  <th class="sortable sorted-desc" data-sort="points">
+                    Points
+                    <span class="sort-icon">▼</span>
+                  </th>
+                  <th class="sortable" data-sort="permission">
+                    Permission/Factor
+                    <span class="sort-icon"></span>
+                  </th>
+                  <th class="sortable" data-sort="risk">
+                    Risk Level
+                    <span class="sort-icon"></span>
+                  </th>
+                  <th data-sort="description">
+                    What It Means
+                  </th>
+                </tr>
+              </thead>
+              <tbody id="reference-table-body">
+                <!-- Will be populated by JavaScript -->
+              </tbody>
+            </table>
           </div>
         </div>
       </section>
@@ -152,6 +238,115 @@
         </div>
       </section>
     </main>
+  </div>
+
+  <!-- Extension Details Modal -->
+  <div id="details-modal" class="modal">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h2 id="modal-extension-name">Extension Details</h2>
+        <button class="modal-close" id="modal-close-btn">&times;</button>
+      </div>
+      <div class="modal-body">
+        <!-- Extension Basic Info -->
+        <section class="details-section">
+          <h3>Basic Information</h3>
+          <div class="info-grid">
+            <div class="info-item">
+              <span class="info-label">Version:</span>
+              <span class="info-value" id="detail-version">-</span>
+            </div>
+            <div class="info-item">
+              <span class="info-label">Status:</span>
+              <span class="info-value" id="detail-status">-</span>
+            </div>
+            <div class="info-item">
+              <span class="info-label">Install Source:</span>
+              <span class="info-value" id="detail-install-type">-</span>
+            </div>
+            <div class="info-item">
+              <span class="info-label">ID:</span>
+              <span class="info-value small" id="detail-id">-</span>
+            </div>
+          </div>
+        </section>
+
+        <!-- Risk Score Breakdown -->
+        <section class="details-section">
+          <h3>Risk Assessment</h3>
+          <div class="score-breakdown">
+            <div class="score-summary">
+              <div class="score-display-wrapper">
+                <div class="score-label">Risk Score</div>
+                <div class="score-circle" id="detail-score-circle">
+                  <div class="score-content">
+                    <span class="score-number" id="detail-score-number">0</span>
+                    <span class="score-max">/100</span>
+                  </div>
+                </div>
+              </div>
+              <div class="score-level">
+                <span class="risk-badge" id="detail-risk-badge">LOW</span>
+                <p id="detail-risk-description">This extension poses minimal security risk.</p>
+              </div>
+            </div>
+            <div class="score-components" id="score-components">
+              <!-- Score components will be populated here -->
+            </div>
+          </div>
+        </section>
+
+        <!-- Recommendations -->
+        <section class="details-section" id="recommendations-section">
+          <h3>Security Recommendations</h3>
+          <div class="recommendations-list" id="recommendations-list">
+            <!-- Recommendations will be populated here -->
+          </div>
+        </section>
+
+        <!-- Permissions Analysis -->
+        <section class="details-section">
+          <h3>Permissions Analysis</h3>
+          <p class="section-description">Review all permissions requested by this extension</p>
+          <div class="permissions-table-container">
+            <table class="permissions-table" id="permissions-table">
+              <thead>
+                <tr>
+                  <th class="sortable" data-sort="category">
+                    Category
+                    <span class="sort-icon"></span>
+                  </th>
+                  <th class="sortable" data-sort="permission">
+                    Permission
+                    <span class="sort-icon"></span>
+                  </th>
+                  <th class="sortable sorted-desc" data-sort="risk">
+                    Risk Level
+                    <span class="sort-icon">▼</span>
+                  </th>
+                  <th class="sortable" data-sort="points">
+                    Points
+                    <span class="sort-icon"></span>
+                  </th>
+                  <th data-sort="description">
+                    Description
+                  </th>
+                </tr>
+              </thead>
+              <tbody id="permissions-table-body">
+                <tr>
+                  <td colspan="5" class="empty-text">No permissions requested</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </section>
+      </div>
+      <div class="modal-footer">
+        <button class="btn-secondary" id="modal-close-footer-btn">Close</button>
+        <button class="btn-primary" id="manage-extension-btn">Manage in Chrome</button>
+      </div>
+    </div>
   </div>
 
   <script src="dashboard.js"></script>
