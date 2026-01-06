@@ -1,4 +1,4 @@
-// Popup script for Extension Security Auditor
+// Popup script for Chrome Sentry
 
 document.addEventListener('DOMContentLoaded', init);
 

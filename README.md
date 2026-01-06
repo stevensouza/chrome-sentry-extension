@@ -1,6 +1,6 @@
-# Extension Security Auditor
+# Chrome Sentry
 
-A Chrome extension that audits your installed browser extensions for security risks. Analyze permissions, identify high-risk extensions, and manage your browser security.
+A Chrome extension that monitors your installed browser extensions for security risks. Analyze permissions, identify high-risk extensions, and protect your browser security.
 
 ## Features
 

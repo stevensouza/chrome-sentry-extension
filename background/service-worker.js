@@ -1,4 +1,4 @@
-// Background service worker for Extension Security Auditor
+// Background service worker for Chrome Sentry
 // Manifest V3 requires service workers instead of background pages
 
 /**
@@ -119,9 +119,9 @@ async function updateSecurityIcon() {
  */
 chrome.runtime.onInstalled.addListener((details) => {
   if (details.reason === 'install') {
-    console.log('Extension Security Auditor installed');
+    console.log('Chrome Sentry installed');
   } else if (details.reason === 'update') {
-    console.log('Extension Security Auditor updated to version', chrome.runtime.getManifest().version);
+    console.log('Chrome Sentry updated to version', chrome.runtime.getManifest().version);
   }
 
   // Update icon on install/update
@@ -175,4 +175,4 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 // Update icon when service worker starts
 updateSecurityIcon();
 
-console.log('Extension Security Auditor service worker loaded');
+console.log('Chrome Sentry service worker loaded');

@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
-  "name": "Extension Security Auditor",
+  "name": "Chrome Sentry",
   "version": "1.0.0",
-  "description": "Audit your Chrome extensions for security risks. Analyze permissions, identify high-risk extensions, and manage your browser security.",
+  "description": "Monitor your Chrome extensions for security risks. Analyze permissions, identify high-risk extensions, and protect your browser security.",
   "permissions": [
     "management",
     "storage"

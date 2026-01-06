@@ -1,4 +1,4 @@
-// Dashboard script for Extension Security Auditor
+// Dashboard script for Chrome Sentry
 
 // State
 let allExtensions = [];
