@@ -307,8 +307,12 @@ function calculateRiskScore(extension) {
   const hostPermissions = extension.hostPermissions || [];
 
   // Host permissions (most dangerous)
+  const hasHttpWildcard = hostPermissions.includes('http://*/*');
+  const hasHttpsWildcard = hostPermissions.includes('https://*/*');
+
   if (hostPermissions.includes('<all_urls>') ||
       hostPermissions.some(h => h.includes('*://*/*'))) {
+    // <all_urls> or *://*/* explicitly granted
     const risk = HOST_PERMISSION_PATTERNS.allUrls;
     score += risk.weight;
     breakdown.push({
@@ -318,7 +322,39 @@ function calculateRiskScore(extension) {
       level: risk.level,
       description: risk.description
     });
+  } else if (hasHttpWildcard && hasHttpsWildcard) {
+    // Both http://*/* and https://*/* present (15 points each = 30 total)
+    // Treat as single "all URLs" entry in breakdown for clarity
+    score += 30;
+    breakdown.push({
+      type: 'host',
+      name: 'All URLs Access (HTTP + HTTPS)',
+      weight: 30,
+      level: 'high',
+      description: 'Full access to ALL websites (both HTTP and HTTPS protocols)'
+    });
+  } else if (hasHttpsWildcard) {
+    // HTTPS wildcard alone = 15 points
+    score += 15;
+    breakdown.push({
+      type: 'host',
+      name: 'HTTPS Wildcard Access',
+      weight: 15,
+      level: 'medium',
+      description: 'Access to all HTTPS websites'
+    });
+  } else if (hasHttpWildcard) {
+    // HTTP wildcard alone = 15 points
+    score += 15;
+    breakdown.push({
+      type: 'host',
+      name: 'HTTP Wildcard Access',
+      weight: 15,
+      level: 'medium',
+      description: 'Access to all HTTP websites'
+    });
   } else if (hostPermissions.some(h => h.includes('*'))) {
+    // Other wildcard patterns (e.g., https://*.google.com/*)
     const risk = HOST_PERMISSION_PATTERNS.wildcardDomain;
     const wildcardCount = hostPermissions.filter(h => h.includes('*')).length;
     score += risk.weight;
@@ -582,23 +618,97 @@ function viewDetails(extensionId) {
   const permissionsData = [];
 
   // Add host permissions to table data
-  hostPermissions.forEach(perm => {
-    const isAllUrls = perm === '<all_urls>' || perm.includes('*://*/*');
-    const riskLevel = isAllUrls ? 'high' : (perm.includes('*') ? 'medium' : 'low');
-    const weight = isAllUrls ? 30 : (perm.includes('*') ? 15 : 0);
-    const explanation = isAllUrls
-      ? 'This extension can access and modify data on ALL websites'
-      : perm.includes('*')
-      ? 'This pattern matches multiple websites'
-      : 'Specific website access';
+  // Special handling: detect if both http://*/* and https://*/* are present
+  const hasHttpWildcard = hostPermissions.includes('http://*/*');
+  const hasHttpsWildcard = hostPermissions.includes('https://*/*');
+  const processedPerms = new Set(); // Track which permissions we've already processed
 
+  hostPermissions.forEach(perm => {
+    // Skip if we already processed this permission
+    if (processedPerms.has(perm)) return;
+
+    // Check for <all_urls> or *://*/* (covers both protocols)
+    const isAllUrls = perm === '<all_urls>' || perm.includes('*://*/*');
+
+    // Special case: Both http://*/* and https://*/* present
+    // Combine them into a single entry for clarity (15 pts each = 30 total)
+    if ((perm === 'http://*/*' || perm === 'https://*/*') && hasHttpWildcard && hasHttpsWildcard) {
+      // Only add combined entry once (when we hit the first one)
+      if (!processedPerms.has('http://*/*') && !processedPerms.has('https://*/*')) {
+        permissionsData.push({
+          category: 'Host Permission',
+          permission: 'http://*/* + https://*/*',
+          risk: 'high',
+          points: 30,
+          description: 'Full access to ALL websites (both HTTP and HTTPS)'
+        });
+        processedPerms.add('http://*/*');
+        processedPerms.add('https://*/*');
+      }
+      return;
+    }
+
+    // HTTPS wildcard alone (15 points, MEDIUM risk)
+    if (perm === 'https://*/*') {
+      permissionsData.push({
+        category: 'Host Permission',
+        permission: perm,
+        risk: 'medium',
+        points: 15,
+        description: 'Access to all HTTPS websites'
+      });
+      processedPerms.add(perm);
+      return;
+    }
+
+    // HTTP wildcard alone (15 points, MEDIUM risk)
+    if (perm === 'http://*/*') {
+      permissionsData.push({
+        category: 'Host Permission',
+        permission: perm,
+        risk: 'medium',
+        points: 15,
+        description: 'Access to all HTTP websites'
+      });
+      processedPerms.add(perm);
+      return;
+    }
+
+    // Handle <all_urls> and *://*/*
+    if (isAllUrls) {
+      permissionsData.push({
+        category: 'Host Permission',
+        permission: perm,
+        risk: 'high',
+        points: 30,
+        description: 'This extension can access and modify data on ALL websites'
+      });
+      processedPerms.add(perm);
+      return;
+    }
+
+    // Other wildcard patterns (e.g., https://*.google.com/*)
+    if (perm.includes('*')) {
+      permissionsData.push({
+        category: 'Host Permission',
+        permission: perm,
+        risk: 'medium',
+        points: 15,
+        description: 'This pattern matches multiple websites'
+      });
+      processedPerms.add(perm);
+      return;
+    }
+
+    // Specific domain (no wildcards)
     permissionsData.push({
       category: 'Host Permission',
       permission: perm,
-      risk: riskLevel,
-      points: weight,
-      description: explanation
+      risk: 'low',
+      points: 0,
+      description: 'Specific website access'
     });
+    processedPerms.add(perm);
   });
 
   // Add API permissions to table data
