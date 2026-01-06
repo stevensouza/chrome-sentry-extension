@@ -77,7 +77,7 @@ Extensions are scored based on:
 ### Project Structure
 
 ```
-extension-security-audit/
+chrome-sentry-extension/
 ├── manifest.json           # Extension configuration
 ├── popup/                  # Popup UI (quick view)
 │   ├── popup.html
