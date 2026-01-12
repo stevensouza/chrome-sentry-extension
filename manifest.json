@@ -1,26 +1,29 @@
 {
   "manifest_version": 3,
   "name": "Chrome Sentry",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Monitor your Chrome extensions for security risks. Analyze permissions, identify high-risk extensions, and protect your browser security.",
   "permissions": [
     "management",
     "storage"
   ],
+  "optional_permissions": [
+    "privacy"
+  ],
   "action": {
     "default_popup": "popup/popup.html",
     "default_icon": {
-      "16": "icons/icon16.png",
-      "32": "icons/icon32.png",
-      "48": "icons/icon48.png",
-      "128": "icons/icon128.png"
+      "16": "icons/icon16-yellow.png",
+      "32": "icons/icon32-yellow.png",
+      "48": "icons/icon48-yellow.png",
+      "128": "icons/icon128-yellow.png"
     }
   },
   "icons": {
-    "16": "icons/icon16.png",
-    "32": "icons/icon32.png",
-    "48": "icons/icon48.png",
-    "128": "icons/icon128.png"
+    "16": "icons/icon16-yellow.png",
+    "32": "icons/icon32-yellow.png",
+    "48": "icons/icon48-yellow.png",
+    "128": "icons/icon128-yellow.png"
   },
   "background": {
     "service_worker": "background/service-worker.js"
