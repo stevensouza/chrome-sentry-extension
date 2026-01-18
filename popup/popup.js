@@ -39,11 +39,8 @@ async function loadQuickStats() {
       low: 0
     };
 
-    let totalRiskScore = 0;
-
     extensionsOnly.forEach(ext => {
       const riskScore = calculateQuickRiskScore(ext);
-      totalRiskScore += riskScore;
 
       if (riskScore > 50) {
         riskCounts.high++;
@@ -54,11 +51,21 @@ async function loadQuickStats() {
       }
     });
 
-    // Calculate overall security score (inverse of risk)
-    const avgRisk = extensionsOnly.length > 0
-      ? totalRiskScore / extensionsOnly.length
-      : 0;
-    const securityScore = Math.round(100 - avgRisk);
+    // Get combined scores from service worker (includes browser security)
+    const scores = await new Promise((resolve) => {
+      chrome.runtime.sendMessage({ type: 'GET_COMBINED_SCORES' }, (response) => {
+        if (response && !response.error) {
+          resolve(response);
+        } else {
+          // Fallback if service worker doesn't respond
+          resolve({
+            extensionScore: 0,
+            browserScore: 0,
+            combinedScore: 0
+          });
+        }
+      });
+    });
 
     // Update UI
     updateUI({
@@ -66,7 +73,9 @@ async function loadQuickStats() {
       highRisk: riskCounts.high,
       mediumRisk: riskCounts.medium,
       lowRisk: riskCounts.low,
-      securityScore: securityScore
+      combinedScore: scores.combinedScore,
+      extensionScore: scores.extensionScore,
+      browserScore: scores.browserScore
     });
 
   } catch (error) {
@@ -147,17 +156,27 @@ function updateUI(stats) {
   document.getElementById('low-risk-count').textContent = stats.lowRisk;
   document.getElementById('total-count').textContent = stats.total;
 
-  // Update overall score
+  // Update combined score
   const scoreElement = document.getElementById('overall-score');
-  scoreElement.textContent = stats.securityScore;
+  scoreElement.textContent = stats.combinedScore;
 
-  // Update score indicator color
+  // Update breakdown scores
+  document.getElementById('extension-score').textContent = stats.extensionScore;
+  const browserScoreEl = document.getElementById('browser-score');
+  if (stats.browserSecurityEnabled) {
+    browserScoreEl.textContent = stats.browserScore;
+  } else {
+    browserScoreEl.textContent = 'Not Scanned';
+    browserScoreEl.style.fontSize = '11px';
+  }
+
+  // Update score indicator color based on combined score
   const indicatorElement = document.getElementById('score-indicator');
   indicatorElement.classList.remove('high-risk', 'medium-risk', 'low-risk');
 
-  if (stats.securityScore < 50) {
+  if (stats.combinedScore < 50) {
     indicatorElement.classList.add('high-risk');
-  } else if (stats.securityScore < 80) {
+  } else if (stats.combinedScore < 80) {
     indicatorElement.classList.add('medium-risk');
   } else {
     indicatorElement.classList.add('low-risk');

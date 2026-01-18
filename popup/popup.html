@@ -15,9 +15,19 @@
     <main class="popup-content">
       <div class="summary-section">
         <div class="overall-score">
-          <span class="score-label">Security Score</span>
+          <span class="score-label">Combined Security Score</span>
           <span class="score-value" id="overall-score">--</span>
           <span class="score-indicator" id="score-indicator"></span>
+        </div>
+
+        <div class="score-breakdown">
+          <span class="breakdown-item">
+            Extensions: <strong id="extension-score">--</strong>
+          </span>
+          <span class="breakdown-separator">|</span>
+          <span class="breakdown-item">
+            Browser: <strong id="browser-score">--</strong>
+          </span>
         </div>
 
         <div class="quick-stats">

@@ -3,13 +3,302 @@
 // State
 let allExtensions = [];
 let filteredExtensions = [];
+let extensionTags = {}; // { extensionId: { tag: string, taggedAt: timestamp } }
+let browserSecurityAudit = {
+  automatedChecks: {},
+  manualChecks: {},
+  lastChecked: null,
+  score: 0,
+  permissionGranted: false
+};
+
+// Configuration for Browser Security automated checks
+const SECURITY_SETTINGS_CONFIG = {
+  'network.webRTCIPHandlingPolicy': {
+    name: 'WebRTC IP Handling',
+    recommendedValue: 'default_public_interface_only',
+    risk: {
+      'default': { level: 'warning', points: -10, label: 'May Leak IP' },
+      'default_public_interface_only': { level: 'secure', points: 0, label: 'Protected' },
+      'disable_non_proxied_udp': { level: 'secure', points: 0, label: 'Protected' }
+    },
+    explanation: 'WebRTC can leak your real IP address even when using a VPN. Restricting WebRTC IP handling prevents this privacy leak.',
+    howToFix: 'Go to chrome://settings/privacy → Security → Use secure connections → Enable "Use secure DNS"'
+  },
+  'network.networkPredictionEnabled': {
+    name: 'Network Prediction (DNS Prefetching)',
+    recommendedValue: false,
+    risk: {
+      true: { level: 'warning', points: -5, label: 'Privacy Risk' },
+      false: { level: 'secure', points: 0, label: 'Disabled' }
+    },
+    explanation: 'Network prediction pre-loads resources for faster browsing, but reveals your browsing intent to DNS servers before you click links.',
+    howToFix: 'Go to chrome://settings/performance → Disable "Preload pages for faster browsing and searching"'
+  },
+  'services.safeBrowsingEnabled': {
+    name: 'Safe Browsing',
+    recommendedValue: true,
+    risk: {
+      false: { level: 'risky', points: -20, label: 'DISABLED - Critical Risk' },
+      true: { level: 'secure', points: 0, label: 'Enabled' }
+    },
+    explanation: 'Safe Browsing protects you from malicious websites, phishing, and dangerous downloads. Disabling this is extremely risky.',
+    howToFix: 'Go to chrome://settings/security → Enable "Safe Browsing" (at minimum Standard protection)'
+  },
+  'services.alternateErrorPagesEnabled': {
+    name: 'Alternate Error Pages',
+    recommendedValue: false,
+    risk: {
+      true: { level: 'warning', points: -5, label: 'Sends URLs to Google' },
+      false: { level: 'secure', points: 0, label: 'Disabled' }
+    },
+    explanation: 'When enabled, Chrome sends URLs of pages that fail to load to Google to suggest alternatives. This reveals some browsing data.',
+    howToFix: 'Go to chrome://settings/privacy → Disable "Show suggestions for similar pages when a page can\'t be found"'
+  },
+  'websites.thirdPartyCookiesAllowed': {
+    name: 'Third-Party Cookies',
+    recommendedValue: false,
+    risk: {
+      true: { level: 'warning', points: -10, label: 'Tracking Enabled' },
+      false: { level: 'secure', points: 0, label: 'Blocked' }
+    },
+    explanation: 'Third-party cookies enable cross-site tracking by advertisers and analytics companies. Blocking them improves privacy.',
+    howToFix: 'Go to chrome://settings/cookies → Select "Block third-party cookies"'
+  },
+  'websites.hyperlinkAuditingEnabled': {
+    name: 'Hyperlink Auditing',
+    recommendedValue: false,
+    risk: {
+      true: { level: 'warning', points: -5, label: 'Click Tracking' },
+      false: { level: 'secure', points: 0, label: 'Disabled' }
+    },
+    explanation: 'Hyperlink auditing allows websites to track which links you click via ping requests, revealing your browsing behavior.',
+    howToFix: 'Cannot be changed via UI - requires Chrome policy or enterprise management'
+  },
+  'websites.referrersEnabled': {
+    name: 'Referrer Headers',
+    recommendedValue: false,
+    risk: {
+      true: { level: 'warning', points: -5, label: 'Privacy Leak' },
+      false: { level: 'secure', points: 0, label: 'Limited' }
+    },
+    explanation: 'Referrer headers tell websites where you came from, potentially leaking private URLs and browsing patterns.',
+    howToFix: 'Cannot be fully disabled via UI - Chrome uses reduced referrers by default'
+  }
+};
+
+// Configuration for Browser Security manual checks
+const MANUAL_SECURITY_CHECKS = [
+  {
+    id: 'enhanced-protection',
+    name: 'Enhanced Safe Browsing Protection',
+    category: 'Critical',
+    recommended: true,
+    risk: {
+      notEnabled: { level: 'risky', points: -15, label: 'Not Enabled' },
+      enabled: { level: 'secure', points: 0, label: 'Enabled' }
+    },
+    explanation: 'Enhanced Protection provides the strongest defense against dangerous sites and downloads, with proactive detection and warnings.',
+    howToCheck: 'chrome://settings/security → Check if "Enhanced protection" is selected',
+    howToFix: 'chrome://settings/security → Select "Enhanced protection"'
+  },
+  {
+    id: 'password-manager',
+    name: 'Password Manager with Breach Detection',
+    category: 'Critical',
+    recommended: true,
+    risk: {
+      notEnabled: { level: 'risky', points: -10, label: 'Weak Passwords Risk' },
+      enabled: { level: 'secure', points: 0, label: 'Enabled' }
+    },
+    explanation: 'Chrome\'s password manager generates strong passwords and alerts you if your passwords are found in data breaches.',
+    howToCheck: 'chrome://settings/passwords → Check if "Offer to save passwords" is ON',
+    howToFix: 'chrome://settings/passwords → Enable "Offer to save passwords" and run "Check passwords"'
+  },
+  {
+    id: 'https-first',
+    name: 'HTTPS-First Mode',
+    category: 'Important',
+    recommended: true,
+    risk: {
+      notEnabled: { level: 'warning', points: -10, label: 'Unencrypted Connections' },
+      enabled: { level: 'secure', points: 0, label: 'Enabled' }
+    },
+    explanation: 'HTTPS-First mode upgrades all connections to encrypted HTTPS, protecting your data from eavesdropping and tampering.',
+    howToCheck: 'chrome://settings/security → Check if "Always use secure connections" is ON',
+    howToFix: 'chrome://settings/security → Enable "Always use secure connections"'
+  },
+  {
+    id: 'privacy-sandbox',
+    name: 'Privacy Sandbox Ad Topics',
+    category: 'Privacy',
+    recommended: false,
+    risk: {
+      enabled: { level: 'warning', points: -5, label: 'Interest Tracking' },
+      disabled: { level: 'secure', points: 0, label: 'Disabled' }
+    },
+    explanation: 'Privacy Sandbox builds an interest profile based on your browsing. While more private than cookies, disabling stops interest tracking entirely.',
+    howToCheck: 'chrome://settings/adPrivacy → Check Ad topics, Site-suggested ads, and Ad measurement settings',
+    howToFix: 'chrome://settings/adPrivacy → Disable all three options'
+  },
+  {
+    id: 'do-not-track',
+    name: 'Do Not Track Header',
+    category: 'Privacy',
+    recommended: true,
+    risk: {
+      notEnabled: { level: 'info', points: -3, label: 'Not Sent' },
+      enabled: { level: 'secure', points: 0, label: 'Enabled' }
+    },
+    explanation: 'Do Not Track is a signal to websites requesting they don\'t track you. Not all sites honor it, but it doesn\'t hurt to enable.',
+    howToCheck: 'chrome://settings/security → Check if "Send a \'Do Not Track\' request" is ON',
+    howToFix: 'chrome://settings/security → Enable "Send a \'Do Not Track\' request with your browsing traffic"'
+  },
+  {
+    id: 'site-permissions',
+    name: 'Default Site Permissions (Location, Camera, Mic)',
+    category: 'Important',
+    recommended: 'Ask',
+    risk: {
+      allow: { level: 'risky', points: -15, label: 'Always Allow' },
+      ask: { level: 'secure', points: 0, label: 'Ask First' },
+      block: { level: 'secure', points: 0, label: 'Blocked' }
+    },
+    explanation: 'Websites shouldn\'t have automatic access to sensitive permissions like location, camera, or microphone. Always require explicit user consent.',
+    howToCheck: 'chrome://settings/content → Check Location, Camera, and Microphone are set to "Ask"',
+    howToFix: 'chrome://settings/content → Set Location, Camera, and Microphone to "Ask before accessing" or "Don\'t allow sites to access"'
+  },
+  {
+    id: 'site-isolation',
+    name: 'Site Isolation (Spectre Protection)',
+    category: 'Critical',
+    recommended: 'Default',
+    risk: {
+      disabled: { level: 'risky', points: -30, label: 'DISABLED - Critical Vulnerability' },
+      default: { level: 'secure', points: 0, label: 'Enabled' }
+    },
+    explanation: 'Site isolation protects against Spectre CPU vulnerabilities by isolating websites in separate processes. Disabling this is extremely dangerous and exposes you to severe security risks.',
+    howToCheck: 'chrome://flags/#site-isolation-trial-opt-out → Should be "Default" (NOT "Disabled")',
+    howToFix: 'chrome://flags/#site-isolation-trial-opt-out → Set to "Default" and restart Chrome'
+  },
+  {
+    id: 'insecure-origins-whitelist',
+    name: 'Insecure Origins Treated as Secure',
+    category: 'Critical',
+    recommended: 'Disabled/Empty',
+    risk: {
+      enabled: { level: 'risky', points: -20, label: 'Security Bypass Active' },
+      disabled: { level: 'secure', points: 0, label: 'Disabled' }
+    },
+    explanation: 'This flag allows bypassing HTTPS requirements for specific sites, treating insecure HTTP connections as secure. Any site in this list is vulnerable to eavesdropping and tampering.',
+    howToCheck: 'chrome://flags/#unsafely-treat-insecure-origin-as-secure → Should be "Disabled" or empty',
+    howToFix: 'chrome://flags/#unsafely-treat-insecure-origin-as-secure → Set to "Disabled" and remove any URLs, then restart Chrome'
+  },
+  {
+    id: 'webtransport-dev-mode',
+    name: 'WebTransport Developer Mode',
+    category: 'Critical',
+    recommended: false,
+    risk: {
+      enabled: { level: 'risky', points: -15, label: 'Certificate Verification Disabled' },
+      disabled: { level: 'secure', points: 0, label: 'Disabled' }
+    },
+    explanation: 'WebTransport Developer Mode removes certificate verification requirements, allowing connections to untrusted servers. This should only be enabled during development and testing.',
+    howToCheck: 'chrome://flags/#webtransport-developer-mode → Should be "Disabled"',
+    howToFix: 'chrome://flags/#webtransport-developer-mode → Set to "Disabled" and restart Chrome'
+  },
+  {
+    id: 'fingerprinting-protection',
+    name: 'Fingerprinting Protection',
+    category: 'Privacy',
+    recommended: 'Default',
+    risk: {
+      disabled: { level: 'warning', points: -10, label: 'Tracking Risk' },
+      default: { level: 'secure', points: 0, label: 'Enabled' }
+    },
+    explanation: 'Fingerprinting protection blocks scripts that attempt to track you by creating a unique "fingerprint" of your browser configuration. Disabling this increases your tracking exposure.',
+    howToCheck: 'chrome://flags/#enable-fingerprinting-protection-blocklist → Should be "Default" (enabled)\nchrome://flags/#enable-fingerprinting-protection-blocklist-incognito → Should be "Default" (enabled)',
+    howToFix: 'Set both flags to "Default" and restart Chrome'
+  },
+  {
+    id: 'ip-protection',
+    name: 'IP Protection Proxy',
+    category: 'Privacy',
+    recommended: 'Default',
+    risk: {
+      optedOut: { level: 'warning', points: -10, label: 'IP Tracking Enabled' },
+      default: { level: 'secure', points: 0, label: 'Protected' }
+    },
+    explanation: 'IP Protection helps mask your IP address from third-party trackers. Opting out allows websites to more easily track your physical location and browsing patterns.',
+    howToCheck: 'chrome://flags/#ip-protection-proxy-opt-out → Should be "Default" (NOT opted out)',
+    howToFix: 'chrome://flags/#ip-protection-proxy-opt-out → Set to "Default" and restart Chrome'
+  },
+  {
+    id: 'canvas-protection-incognito',
+    name: 'Canvas Fingerprinting Protection (Incognito)',
+    category: 'Privacy',
+    recommended: 'Default',
+    risk: {
+      disabled: { level: 'warning', points: -8, label: 'Incognito Fingerprinting' },
+      default: { level: 'secure', points: 0, label: 'Protected' }
+    },
+    explanation: 'Canvas fingerprinting is a tracking technique that uses HTML5 canvas to identify users. In Incognito mode, Chrome can add noise or block canvas readbacks to prevent this tracking.',
+    howToCheck: 'chrome://flags/#enable-canvas-noise → Should be "Default"\nchrome://flags/#enable-block-canvas-readback → Should be "Default"',
+    howToFix: 'Set both flags to "Default" and restart Chrome'
+  },
+  {
+    id: 'unsafe-webgpu',
+    name: 'Unsafe WebGPU Support',
+    category: 'Important',
+    recommended: false,
+    risk: {
+      enabled: { level: 'warning', points: -10, label: 'Security Risk' },
+      disabled: { level: 'secure', points: 0, label: 'Disabled' }
+    },
+    explanation: 'Unsafe WebGPU enables experimental GPU features on unsupported configurations, potentially exposing security vulnerabilities. Only enable for local development.',
+    howToCheck: 'chrome://flags/#enable-unsafe-webgpu → Should be "Disabled"',
+    howToFix: 'chrome://flags/#enable-unsafe-webgpu → Set to "Disabled" and restart Chrome'
+  }
+];
+
+/**
+ * Load previously saved browser security audit data from storage
+ */
+async function loadBrowserSecurityData() {
+  try {
+    const data = await chrome.storage.local.get(['browserSecurityAudit', 'automatedChecksEnabled', 'manualSecurityChecks']);
+
+    if (data.browserSecurityAudit) {
+      browserSecurityAudit.automatedChecks = data.browserSecurityAudit.automatedChecks || {};
+      browserSecurityAudit.lastChecked = data.browserSecurityAudit.lastChecked || null;
+    }
+
+    if (data.manualSecurityChecks) {
+      browserSecurityAudit.manualChecks = data.manualSecurityChecks;
+    }
+
+    browserSecurityAudit.permissionGranted = data.automatedChecksEnabled || false;
+
+    // Calculate the browser security score from loaded data
+    calculateBrowserSecurityScore();
+  } catch (error) {
+    console.error('Error loading browser security data:', error);
+  }
+}
 
 // Initialize dashboard
 document.addEventListener('DOMContentLoaded', init);
 
 async function init() {
   setupEventListeners();
+  await loadExtensionTags();
   await loadExtensions();
+  cleanupOrphanedTags();
+
+  // Load browser security data BEFORE calculating overview score
+  await loadBrowserSecurityData();
+  await loadAutomatedChecksPreference(); // Phase 4: Load browser security settings
+
   updateOverview();
   renderExtensions();
   populateReferenceTable();
@@ -36,6 +325,16 @@ function setupEventListeners() {
   // Filters
   document.getElementById('risk-filter').addEventListener('change', filterExtensions);
   document.getElementById('status-filter').addEventListener('change', filterExtensions);
+  document.getElementById('usage-filter').addEventListener('change', filterExtensions);
+
+  // Tag selector buttons in modal (event delegation)
+  document.querySelector('.usage-tag-selector').addEventListener('click', (e) => {
+    const btn = e.target.closest('.tag-btn');
+    if (btn && currentExtensionId) {
+      const tag = btn.dataset.tag;
+      setExtensionTag(currentExtensionId, tag);
+    }
+  });
 
   // Scan button with visual feedback
   document.getElementById('scan-btn').addEventListener('click', async (e) => {
@@ -110,6 +409,24 @@ function setupEventListeners() {
     }
   });
 
+  // Manual checklist table sorting
+  document.getElementById('manual-checklist-table').addEventListener('click', (e) => {
+    const th = e.target.closest('th.sortable');
+    if (th) {
+      const column = th.dataset.sort;
+      sortManualChecklistTable(column);
+    }
+  });
+
+  // Automated checks table sorting
+  document.getElementById('automated-checks-table').addEventListener('click', (e) => {
+    const th = e.target.closest('th.sortable');
+    if (th) {
+      const column = th.dataset.sort;
+      sortAutomatedChecksTable(column);
+    }
+  });
+
   // Summary stats - clickable to filter
   document.querySelectorAll('.summary-stat.clickable').forEach(stat => {
     stat.addEventListener('click', (e) => {
@@ -117,6 +434,33 @@ function setupEventListeners() {
       filterByStatus(filter);
     });
   });
+
+  // Usage stats - clickable to filter by tag
+  document.querySelectorAll('.usage-stat.clickable').forEach(stat => {
+    stat.addEventListener('click', (e) => {
+      const usageTag = stat.dataset.usage;
+      filterByUsageTag(usageTag);
+    });
+  });
+
+  // Phase 4: Browser Security event handlers
+  const automatedChecksToggle = document.getElementById('automated-checks-toggle');
+  if (automatedChecksToggle) {
+    automatedChecksToggle.addEventListener('change', async (e) => {
+      if (e.target.checked) {
+        await requestAutomatedChecksPermission();
+      } else {
+        await revokeAutomatedChecksPermission();
+      }
+    });
+  }
+
+  const recheckBtn = document.getElementById('recheck-settings-btn');
+  if (recheckBtn) {
+    recheckBtn.addEventListener('click', async (e) => {
+      await runBrowserSecurityAudit();
+    });
+  }
 }
 
 /**
@@ -157,6 +501,105 @@ async function loadExtensions() {
   } catch (error) {
     console.error('Error loading extensions:', error);
   }
+}
+
+/**
+ * Load extension tags from chrome.storage.sync (with local fallback per R6)
+ */
+async function loadExtensionTags() {
+  try {
+    const result = await chrome.storage.sync.get(['extensionTags']);
+    extensionTags = result.extensionTags || {};
+  } catch (error) {
+    console.warn('Error loading tags from sync storage, trying local:', error);
+    try {
+      const result = await chrome.storage.local.get(['extensionTags']);
+      extensionTags = result.extensionTags || {};
+    } catch (localError) {
+      console.error('Error loading tags from local storage:', localError);
+      extensionTags = {};
+    }
+  }
+}
+
+/**
+ * Save extension tags to chrome.storage.sync (with local fallback per R6)
+ */
+async function saveExtensionTags() {
+  try {
+    await chrome.storage.sync.set({ extensionTags });
+  } catch (error) {
+    console.warn('Sync storage failed, falling back to local:', error);
+    try {
+      await chrome.storage.local.set({ extensionTags });
+    } catch (localError) {
+      console.error('Error saving tags to local storage:', localError);
+    }
+  }
+}
+
+/**
+ * Set or clear a tag for an extension
+ */
+async function setExtensionTag(extensionId, tag) {
+  if (!tag) {
+    delete extensionTags[extensionId];
+  } else {
+    extensionTags[extensionId] = {
+      tag: tag,
+      taggedAt: Date.now()
+    };
+  }
+  await saveExtensionTags();
+
+  // Update UI
+  updateOverview();
+  renderExtensions();
+
+  // Update modal tag buttons if modal is open for this extension
+  if (currentExtensionId === extensionId) {
+    updateModalTagButtons(extensionId);
+  }
+}
+
+/**
+ * Get tag for an extension
+ */
+function getExtensionTag(extensionId) {
+  return extensionTags[extensionId]?.tag || null;
+}
+
+/**
+ * Remove tags for extensions that are no longer installed (R1)
+ */
+function cleanupOrphanedTags() {
+  const currentIds = new Set(allExtensions.map(e => e.id));
+  let changed = false;
+
+  for (const id of Object.keys(extensionTags)) {
+    if (!currentIds.has(id)) {
+      delete extensionTags[id];
+      changed = true;
+    }
+  }
+
+  if (changed) {
+    saveExtensionTags();
+    console.log('Cleaned up orphaned extension tags');
+  }
+}
+
+/**
+ * Update tag button states in the modal
+ */
+function updateModalTagButtons(extensionId) {
+  const currentTag = getExtensionTag(extensionId);
+  const tagButtons = document.querySelectorAll('.usage-tag-selector .tag-btn');
+
+  tagButtons.forEach(btn => {
+    const btnTag = btn.dataset.tag;
+    btn.classList.toggle('active', btnTag === currentTag);
+  });
 }
 
 /**
@@ -211,8 +654,8 @@ const PERMISSION_RISK_DATA = {
   'management': {
     weight: 10,
     level: 'medium',
-    description: 'Can enable/disable other extensions',
-    recommendation: 'Could be used to disable security extensions'
+    description: 'Can read extension data and potentially enable/disable extensions',
+    recommendation: 'Note: Chrome Sentry only uses this to READ extension data, never to modify or disable extensions'
   },
   'tabs': {
     weight: 5,
@@ -427,14 +870,49 @@ function updateOverview() {
     low: allExtensions.filter(e => e.riskLevel === 'low').length
   };
 
-  // Calculate overall score
+  // Calculate usage tag counts
+  const tagCounts = {
+    'actively-used': 0,
+    'rarely-used': 0,
+    'can-remove': 0,
+    'untagged': 0
+  };
+
+  allExtensions.forEach(ext => {
+    const tag = getExtensionTag(ext.id);
+    if (tag) {
+      tagCounts[tag]++;
+    } else {
+      tagCounts.untagged++;
+    }
+  });
+
+  // Calculate extension security score
   const avgRisk = total > 0
     ? allExtensions.reduce((sum, e) => sum + e.riskScore, 0) / total
     : 0;
-  const overallScore = Math.round(100 - avgRisk);
+  const extensionScore = Math.round(100 - avgRisk);
+
+  // Calculate combined score (extension + browser security)
+  // Only include browser score if browser security is enabled
+  const browserScore = browserSecurityAudit.score || 0;
+  const browserEnabled = browserSecurityAudit.permissionGranted;
+
+  const combinedScore = browserEnabled
+    ? Math.round((extensionScore + browserScore) / 2)
+    : extensionScore;
 
   // Update UI
-  document.getElementById('overall-score').textContent = overallScore;
+  document.getElementById('overall-score').textContent = combinedScore;
+  document.getElementById('extension-score-dash').textContent = extensionScore;
+
+  const browserScoreDashEl = document.getElementById('browser-score-dash');
+  if (browserEnabled) {
+    browserScoreDashEl.textContent = browserScore;
+  } else {
+    browserScoreDashEl.textContent = 'Not Scanned';
+    browserScoreDashEl.style.fontSize = '12px';
+  }
   document.getElementById('high-count').textContent = riskCounts.high;
   document.getElementById('medium-count').textContent = riskCounts.medium;
   document.getElementById('low-count').textContent = riskCounts.low;
@@ -442,14 +920,20 @@ function updateOverview() {
   document.getElementById('enabled-extensions').textContent = enabled;
   document.getElementById('disabled-extensions').textContent = disabled;
 
+  // Update usage analytics counts
+  document.getElementById('actively-used-count').textContent = tagCounts['actively-used'];
+  document.getElementById('rarely-used-count').textContent = tagCounts['rarely-used'];
+  document.getElementById('can-remove-count').textContent = tagCounts['can-remove'];
+  document.getElementById('untagged-count').textContent = tagCounts.untagged;
+
   // Update score bar
   const scoreBar = document.getElementById('score-bar-fill');
-  scoreBar.style.width = `${overallScore}%`;
+  scoreBar.style.width = `${combinedScore}%`;
   scoreBar.classList.remove('high-risk', 'medium-risk', 'low-risk');
 
-  if (overallScore < 50) {
+  if (combinedScore < 50) {
     scoreBar.classList.add('high-risk');
-  } else if (overallScore < 80) {
+  } else if (combinedScore < 80) {
     scoreBar.classList.add('medium-risk');
   } else {
     scoreBar.classList.add('low-risk');
@@ -457,12 +941,22 @@ function updateOverview() {
 
   // Update description
   const description = document.getElementById('score-description');
-  if (overallScore >= 80) {
-    description.textContent = 'Your extensions have minimal security risks.';
-  } else if (overallScore >= 50) {
-    description.textContent = 'Some extensions may pose moderate security risks.';
+  if (!browserEnabled) {
+    if (combinedScore >= 80) {
+      description.textContent = 'Extension security is strong. Enable browser security scan for complete protection.';
+    } else if (combinedScore >= 50) {
+      description.textContent = 'Some extension risks detected. Enable browser security scan for full analysis.';
+    } else {
+      description.textContent = 'High-risk extensions detected. Review extensions and enable browser security scan.';
+    }
   } else {
-    description.textContent = 'Multiple high-risk extensions detected. Review recommended.';
+    if (combinedScore >= 80) {
+      description.textContent = 'Strong overall security posture with both extensions and browser settings.';
+    } else if (combinedScore >= 50) {
+      description.textContent = 'Moderate security risks detected in extensions or browser settings.';
+    } else {
+      description.textContent = 'Significant security risks detected. Review extensions and browser settings.';
+    }
   }
 }
 
@@ -473,6 +967,7 @@ function filterExtensions() {
   const searchTerm = document.getElementById('search-input').value.toLowerCase();
   const riskFilter = document.getElementById('risk-filter').value;
   const statusFilter = document.getElementById('status-filter').value;
+  const usageFilter = document.getElementById('usage-filter').value;
 
   filteredExtensions = allExtensions.filter(ext => {
     // Search filter
@@ -487,7 +982,13 @@ function filterExtensions() {
       (statusFilter === 'enabled' && ext.enabled) ||
       (statusFilter === 'disabled' && !ext.enabled);
 
-    return matchesSearch && matchesRisk && matchesStatus;
+    // Usage tag filter
+    const extTag = getExtensionTag(ext.id);
+    const matchesUsage = usageFilter === 'all' ||
+      (usageFilter === 'untagged' && !extTag) ||
+      (usageFilter !== 'untagged' && extTag === usageFilter);
+
+    return matchesSearch && matchesRisk && matchesStatus && matchesUsage;
   });
 
   renderExtensions();
@@ -509,31 +1010,42 @@ function renderExtensions() {
     return;
   }
 
-  container.innerHTML = filteredExtensions.map(ext => `
-    <div class="extension-item" data-id="${ext.id}">
-      <div class="extension-icon">
-        ${ext.icons && ext.icons.length > 0
-          ? `<img src="${ext.icons[ext.icons.length - 1].url}" alt="${ext.name}">`
-          : '<span>?</span>'
-        }
-      </div>
-      <div class="extension-info">
-        <div class="extension-name">${escapeHtml(ext.name)}</div>
-        <div class="extension-meta">
-          v${ext.version} &middot;
-          ${ext.enabled ? 'Enabled' : 'Disabled'} &middot;
-          ${getInstallTypeLabel(ext.installType)}
+  container.innerHTML = filteredExtensions.map(ext => {
+    const tag = getExtensionTag(ext.id);
+    const tagBadgeHTML = tag ? `
+      <span class="tag-badge tag-${tag}">
+        ${tag === 'actively-used' ? '✓ I use this' :
+          tag === 'rarely-used' ? '~ Rarely use' :
+          '✗ Can remove'}
+      </span>
+    ` : '';
+
+    return `
+      <div class="extension-item" data-id="${ext.id}">
+        <div class="extension-icon">
+          ${ext.icons && ext.icons.length > 0
+            ? `<img src="${ext.icons[ext.icons.length - 1].url}" alt="${ext.name}">`
+            : '<span>?</span>'
+          }
+        </div>
+        <div class="extension-info">
+          <div class="extension-name">${escapeHtml(ext.name)}${tagBadgeHTML}</div>
+          <div class="extension-meta">
+            v${ext.version} &middot;
+            ${ext.enabled ? 'Enabled' : 'Disabled'} &middot;
+            ${getInstallTypeLabel(ext.installType)}
+          </div>
+        </div>
+        <div class="extension-risk">
+          <span class="risk-badge ${ext.riskLevel}">${ext.riskLevel.toUpperCase()}</span>
+          <span class="risk-score">${ext.riskScore}/100</span>
+        </div>
+        <div class="extension-actions">
+          <button>Details</button>
         </div>
       </div>
-      <div class="extension-risk">
-        <span class="risk-badge ${ext.riskLevel}">${ext.riskLevel.toUpperCase()}</span>
-        <span class="risk-score">${ext.riskScore}/100</span>
-      </div>
-      <div class="extension-actions">
-        <button>Details</button>
-      </div>
-    </div>
-  `).join('');
+    `;
+  }).join('');
 }
 
 /**
@@ -788,6 +1300,9 @@ function viewDetails(extensionId) {
     chrome.tabs.create({ url: `chrome://extensions/?id=${ext.id}` });
   });
 
+  // Update tag button states for this extension
+  updateModalTagButtons(extensionId);
+
   // Show modal
   document.getElementById('details-modal').classList.add('show');
 }
@@ -1001,6 +1516,7 @@ function filterByRisk(riskLevel) {
 
   // Clear other filters
   document.getElementById('status-filter').value = 'all';
+  document.getElementById('usage-filter').value = 'all';
   document.getElementById('search-input').value = '';
 
   // Apply filters
@@ -1008,18 +1524,24 @@ function filterByRisk(riskLevel) {
 }
 
 /**
- * Export audit report
+ * Export audit report (R4: includes schemaVersion for future compatibility)
  */
 function exportReport() {
   const report = {
+    schemaVersion: '2.0',
     generatedAt: new Date().toISOString(),
     summary: {
       totalExtensions: allExtensions.length,
       enabledExtensions: allExtensions.filter(e => e.enabled).length,
       highRisk: allExtensions.filter(e => e.riskLevel === 'high').length,
       mediumRisk: allExtensions.filter(e => e.riskLevel === 'medium').length,
-      lowRisk: allExtensions.filter(e => e.riskLevel === 'low').length
+      lowRisk: allExtensions.filter(e => e.riskLevel === 'low').length,
+      activelyUsed: allExtensions.filter(e => getExtensionTag(e.id) === 'actively-used').length,
+      rarelyUsed: allExtensions.filter(e => getExtensionTag(e.id) === 'rarely-used').length,
+      canRemove: allExtensions.filter(e => getExtensionTag(e.id) === 'can-remove').length,
+      untagged: allExtensions.filter(e => !getExtensionTag(e.id)).length
     },
+    extensionTags: extensionTags,
     extensions: allExtensions.map(ext => ({
       name: ext.name,
       id: ext.id,
@@ -1028,6 +1550,7 @@ function exportReport() {
       installType: ext.installType,
       riskScore: ext.riskScore,
       riskLevel: ext.riskLevel,
+      usageTag: getExtensionTag(ext.id),
       permissions: ext.permissions || [],
       hostPermissions: ext.hostPermissions || []
     }))
@@ -1240,9 +1763,11 @@ function filterByStatus(status) {
   if (status === 'all') {
     document.getElementById('status-filter').value = 'all';
     document.getElementById('risk-filter').value = 'all';
+    document.getElementById('usage-filter').value = 'all';
   } else {
     document.getElementById('status-filter').value = status;
     document.getElementById('risk-filter').value = 'all';
+    document.getElementById('usage-filter').value = 'all';
   }
 
   // Clear search
@@ -1250,4 +1775,848 @@ function filterByStatus(status) {
 
   // Apply filters
   filterExtensions();
+}
+
+/**
+ * Filter extensions by usage tag and switch to extensions tab
+ */
+function filterByUsageTag(usageTag) {
+  // Switch to extensions tab
+  switchTab('extensions');
+
+  // Set the usage filter
+  document.getElementById('usage-filter').value = usageTag;
+
+  // Clear other filters
+  document.getElementById('risk-filter').value = 'all';
+  document.getElementById('status-filter').value = 'all';
+  document.getElementById('search-input').value = '';
+
+  // Apply filters
+  filterExtensions();
+}
+
+// ============================================================================
+// BROWSER SECURITY AUDIT (Phase 4)
+// ============================================================================
+
+/**
+ * Check if automated checks permission is granted (R2: Always check actual Chrome state)
+ */
+async function checkAutomatedChecksPermission() {
+  try {
+    const hasPermission = await chrome.permissions.contains({ permissions: ['privacy'] });
+    return hasPermission;
+  } catch (error) {
+    console.error('Failed to check privacy permission:', error);
+    return false;
+  }
+}
+
+/**
+ * Request privacy permission for automated checks (R8: Show loading state)
+ */
+async function requestAutomatedChecksPermission() {
+  const toggle = document.getElementById('automated-checks-toggle');
+  const recheckBtn = document.getElementById('recheck-settings-btn');
+
+  try {
+    // Show loading state (R8)
+    toggle.disabled = true;
+
+    const granted = await chrome.permissions.request({ permissions: ['privacy'] });
+
+    if (granted) {
+      browserSecurityAudit.permissionGranted = true;
+      await saveAutomatedChecksPreference(true);
+
+      // Run audit and show results
+      await runBrowserSecurityAudit();
+      renderBrowserSecurityAudit();
+
+      // Show automated checks section
+      document.getElementById('automated-checks-section').style.display = 'block';
+    } else {
+      // User denied permission
+      browserSecurityAudit.permissionGranted = false;
+      toggle.checked = false;
+      await saveAutomatedChecksPreference(false);
+    }
+  } catch (error) {
+    console.error('Failed to request privacy permission:', error);
+    browserSecurityAudit.permissionGranted = false;
+    toggle.checked = false;
+    await saveAutomatedChecksPreference(false);
+  } finally {
+    toggle.disabled = false;
+  }
+}
+
+/**
+ * Revoke privacy permission for automated checks
+ */
+async function revokeAutomatedChecksPermission() {
+  try {
+    await chrome.permissions.remove({ permissions: ['privacy'] });
+    browserSecurityAudit.permissionGranted = false;
+    browserSecurityAudit.automatedChecks = {};
+    browserSecurityAudit.score = 0;
+
+    await saveAutomatedChecksPreference(false);
+
+    // Clear stored browser security audit data
+    await chrome.storage.local.set({
+      browserSecurityAudit: {
+        automatedChecks: {},
+        lastChecked: null
+      }
+    });
+
+    // Hide automated checks section
+    document.getElementById('automated-checks-section').style.display = 'none';
+
+    // Update UI
+    renderBrowserSecurityAudit();
+    updateOverview(); // Update overview to reflect removed browser score
+
+    // Notify service worker to update badge
+    chrome.runtime.sendMessage({ type: 'UPDATE_ICON' });
+  } catch (error) {
+    console.error('Failed to revoke privacy permission:', error);
+  }
+}
+
+/**
+ * Load automated checks permission state on init (R2: Check actual permission, not saved preference)
+ */
+async function loadAutomatedChecksPreference() {
+  try {
+    // R2: Always check ACTUAL Chrome permission state, not just saved preference
+    const hasPermission = await checkAutomatedChecksPermission();
+
+    browserSecurityAudit.permissionGranted = hasPermission;
+    document.getElementById('automated-checks-toggle').checked = hasPermission;
+
+    if (hasPermission) {
+      // Permission granted - show section and run audit
+      document.getElementById('automated-checks-section').style.display = 'block';
+      await runBrowserSecurityAudit();
+    } else {
+      // Permission not granted - hide section
+      document.getElementById('automated-checks-section').style.display = 'none';
+    }
+
+    // Load manual check states
+    await loadManualCheckStates();
+
+    // Render UI
+    renderBrowserSecurityAudit();
+  } catch (error) {
+    console.error('Failed to load automated checks preference:', error);
+  }
+}
+
+/**
+ * Save automated checks preference
+ */
+async function saveAutomatedChecksPreference(enabled) {
+  try {
+    await chrome.storage.local.set({ automatedChecksEnabled: enabled });
+  } catch (error) {
+    console.error('Failed to save automated checks preference:', error);
+  }
+}
+
+/**
+ * Run browser security audit using chrome.privacy API (R5: Error handling for each setting)
+ */
+async function runBrowserSecurityAudit() {
+  if (!browserSecurityAudit.permissionGranted) {
+    return;
+  }
+
+  const recheckBtn = document.getElementById('recheck-settings-btn');
+  if (recheckBtn) {
+    recheckBtn.disabled = true;
+    recheckBtn.textContent = '⏳ Checking...';
+  }
+
+  browserSecurityAudit.automatedChecks = {};
+
+  // Check each setting with individual error handling (R5)
+  for (const [settingPath, config] of Object.entries(SECURITY_SETTINGS_CONFIG)) {
+    const result = await getPrivacySetting(settingPath);
+
+    if (result.error) {
+      // R5: Show "Unable to check" status for failed readings
+      browserSecurityAudit.automatedChecks[settingPath] = {
+        value: null,
+        error: result.error,
+        config: config
+      };
+    } else {
+      browserSecurityAudit.automatedChecks[settingPath] = {
+        value: result.value,
+        levelOfControl: result.levelOfControl,
+        config: config
+      };
+    }
+  }
+
+  browserSecurityAudit.lastChecked = Date.now();
+
+  // Calculate score
+  calculateBrowserSecurityScore();
+
+  // Save audit results to storage for service worker to access
+  await chrome.storage.local.set({
+    browserSecurityAudit: {
+      automatedChecks: browserSecurityAudit.automatedChecks,
+      lastChecked: browserSecurityAudit.lastChecked
+    }
+  });
+
+  // Render results
+  renderBrowserSecurityAudit();
+  updateOverview(); // Update overview to reflect new browser security score
+
+  // Notify service worker to update badge
+  chrome.runtime.sendMessage({ type: 'UPDATE_ICON' });
+
+  if (recheckBtn) {
+    recheckBtn.disabled = false;
+    recheckBtn.textContent = '🔄 Re-check';
+  }
+}
+
+/**
+ * Get a privacy setting value (R5: Graceful error handling)
+ */
+async function getPrivacySetting(settingPath) {
+  try {
+    const parts = settingPath.split('.');
+    let setting = chrome.privacy;
+
+    for (const part of parts) {
+      setting = setting[part];
+      if (!setting) {
+        throw new Error(`Setting ${settingPath} not found`);
+      }
+    }
+
+    const result = await setting.get({});
+    return {
+      value: result.value,
+      levelOfControl: result.levelOfControl
+    };
+  } catch (error) {
+    // R5: Return error info instead of crashing
+    console.warn(`Could not read setting ${settingPath}:`, error.message);
+    return {
+      value: null,
+      error: error.message
+    };
+  }
+}
+
+/**
+ * Calculate browser security score from automated checks
+ */
+function calculateBrowserSecurityScore() {
+  if (!browserSecurityAudit.permissionGranted) {
+    browserSecurityAudit.score = 0;
+    return;
+  }
+
+  let totalPoints = 0;
+  let secureCount = 0;
+  let warningCount = 0;
+  let riskyCount = 0;
+
+  for (const [settingPath, check] of Object.entries(browserSecurityAudit.automatedChecks)) {
+    if (check.error) {
+      // Skip settings that couldn't be checked
+      continue;
+    }
+
+    const value = check.value;
+    const config = check.config;
+    const riskInfo = config.risk[value] || config.risk[String(value)];
+
+    if (riskInfo) {
+      totalPoints += riskInfo.points;
+
+      if (riskInfo.level === 'secure') secureCount++;
+      else if (riskInfo.level === 'warning') warningCount++;
+      else if (riskInfo.level === 'risky') riskyCount++;
+    }
+  }
+
+  // Score = 100 + totalPoints (where totalPoints are negative for risky settings)
+  browserSecurityAudit.score = Math.max(0, Math.min(100, 100 + totalPoints));
+  browserSecurityAudit.secureCount = secureCount;
+  browserSecurityAudit.warningCount = warningCount;
+  browserSecurityAudit.riskyCount = riskyCount;
+}
+
+/**
+ * Render browser security audit UI
+ */
+function renderBrowserSecurityAudit() {
+  renderAutomatedChecks();
+  renderManualChecklist();
+  updateBrowserSecurityScore();
+}
+
+/**
+ * Render automated security checks results as table
+ */
+function renderAutomatedChecks() {
+  const tbody = document.getElementById('automated-checks-body');
+  const lastCheckedDisplay = document.getElementById('last-checked-display');
+  const lastCheckedTime = document.getElementById('last-checked-time');
+
+  if (!browserSecurityAudit.permissionGranted) {
+    tbody.innerHTML = '<tr><td colspan="5" class="no-checks">Enable automated checks above to scan your browser settings.</td></tr>';
+    lastCheckedDisplay.style.display = 'none';
+    return;
+  }
+
+  if (Object.keys(browserSecurityAudit.automatedChecks).length === 0) {
+    tbody.innerHTML = '<tr><td colspan="5" class="no-checks">Click "Re-check" to scan your browser settings.</td></tr>';
+    lastCheckedDisplay.style.display = 'none';
+    return;
+  }
+
+  // Show last checked time
+  if (browserSecurityAudit.lastChecked) {
+    lastCheckedTime.textContent = new Date(browserSecurityAudit.lastChecked).toLocaleString();
+    lastCheckedDisplay.style.display = 'inline-block';
+  }
+
+  // Create table data array for sorting
+  const tableData = [];
+
+  for (const [settingPath, check] of Object.entries(browserSecurityAudit.automatedChecks)) {
+    const config = check.config;
+
+    // R5: Handle errors gracefully
+    if (check.error) {
+      tableData.push({
+        name: config.name,
+        currentValue: null,
+        recommendedValue: config.recommendedValue,
+        status: 'error',
+        config: config,
+        check: check,
+        error: check.error
+      });
+      continue;
+    }
+
+    const value = check.value;
+    const riskInfo = config.risk[value] || config.risk[String(value)] || { level: 'warning', label: 'Unknown', points: 0 };
+    const isRecommended = (value === config.recommendedValue) || (String(value) === String(config.recommendedValue));
+
+    tableData.push({
+      name: config.name,
+      currentValue: value,
+      recommendedValue: config.recommendedValue,
+      status: riskInfo.level,
+      isRecommended: isRecommended,
+      config: config,
+      check: check,
+      riskInfo: riskInfo
+    });
+  }
+
+  // Store for sorting
+  window.automatedChecksData = tableData;
+
+  // Render table rows
+  tbody.innerHTML = tableData.map(item => {
+    if (item.error) {
+      return `
+        <tr class="status-error">
+          <td class="setting-name-cell">
+            <div class="setting-name">${item.name}</div>
+            <div class="setting-explanation">${item.config.explanation}</div>
+          </td>
+          <td colspan="2" class="error-cell">
+            <span class="error-message">Unable to check: ${item.error}</span>
+          </td>
+          <td class="status-cell">
+            <span class="status-badge error">Error</span>
+          </td>
+          <td class="details-cell">
+            <details class="check-instructions">
+              <summary>How to check manually</summary>
+              <div class="instructions-content">
+                <p>${item.config.howToFix}</p>
+              </div>
+            </details>
+          </td>
+        </tr>
+      `;
+    }
+
+    const statusIcon = item.status === 'secure' ? '✓' : item.status === 'warning' ? '⚠' : '✗';
+
+    return `
+      <tr class="status-${item.status}">
+        <td class="setting-name-cell">
+          <div class="setting-name">${item.name}</div>
+          <div class="setting-explanation">${item.config.explanation}</div>
+        </td>
+        <td class="current-value-cell">
+          <span class="value-badge ${item.isRecommended ? 'good' : 'bad'}">${formatSettingValue(item.currentValue)}</span>
+        </td>
+        <td class="recommended-value-cell">
+          <span class="value-text">${formatSettingValue(item.recommendedValue)}</span>
+        </td>
+        <td class="status-cell">
+          <span class="status-badge ${item.status}">
+            ${statusIcon} ${item.status === 'secure' ? 'Secure' : item.status === 'warning' ? 'Warning' : 'Risky'}
+          </span>
+        </td>
+        <td class="details-cell">
+          ${!item.isRecommended ? `
+            <details class="check-instructions">
+              <summary>How to fix</summary>
+              <div class="instructions-content">
+                <p>${item.config.howToFix}</p>
+                ${item.check.levelOfControl && item.check.levelOfControl !== 'controllable_by_this_extension' ?
+                  `<p class="control-note">⚠️ This setting is managed by ${item.check.levelOfControl.replace(/_/g, ' ')}</p>` : ''}
+              </div>
+            </details>
+          ` : '<span class="ok-text">Configured correctly</span>'}
+        </td>
+      </tr>
+    `;
+  }).join('');
+}
+
+/**
+ * Format a setting value for display
+ */
+function formatSettingValue(value) {
+  if (typeof value === 'boolean') {
+    return value ? 'Enabled' : 'Disabled';
+  }
+  if (value === 'default') {
+    return 'Default';
+  }
+  if (value === 'default_public_interface_only') {
+    return 'Public Interface Only';
+  }
+  if (value === 'disable_non_proxied_udp') {
+    return 'Disable Non-Proxied UDP';
+  }
+  return String(value);
+}
+
+/**
+ * Sort automated checks table
+ */
+let automatedChecksSort = { column: 'status', direction: 'asc' };
+
+function sortAutomatedChecksTable(column) {
+  if (!window.automatedChecksData) return;
+
+  const data = [...window.automatedChecksData];
+
+  // Toggle direction if same column
+  if (automatedChecksSort.column === column) {
+    automatedChecksSort.direction = automatedChecksSort.direction === 'asc' ? 'desc' : 'asc';
+  } else {
+    automatedChecksSort.column = column;
+    automatedChecksSort.direction = column === 'status' ? 'asc' : 'asc';
+  }
+
+  // Sort the data
+  data.sort((a, b) => {
+    let aVal, bVal;
+
+    switch (column) {
+      case 'name':
+        aVal = a.name.toLowerCase();
+        bVal = b.name.toLowerCase();
+        break;
+      case 'current':
+        aVal = formatSettingValue(a.currentValue).toLowerCase();
+        bVal = formatSettingValue(b.currentValue).toLowerCase();
+        break;
+      case 'status':
+        const statusOrder = { error: 4, risky: 3, warning: 2, secure: 1 };
+        aVal = statusOrder[a.status] || 0;
+        bVal = statusOrder[b.status] || 0;
+        break;
+      default:
+        return 0;
+    }
+
+    if (aVal < bVal) return automatedChecksSort.direction === 'asc' ? -1 : 1;
+    if (aVal > bVal) return automatedChecksSort.direction === 'asc' ? 1 : -1;
+    return 0;
+  });
+
+  // Update sort icons
+  document.querySelectorAll('#automated-checks-table th.sortable').forEach(th => {
+    const icon = th.querySelector('.sort-icon');
+    th.classList.remove('sorted-asc', 'sorted-desc');
+    icon.textContent = '';
+
+    if (th.dataset.sort === column) {
+      th.classList.add(`sorted-${automatedChecksSort.direction}`);
+      icon.textContent = automatedChecksSort.direction === 'asc' ? '▲' : '▼';
+    }
+  });
+
+  // Re-render table
+  const tbody = document.getElementById('automated-checks-body');
+  tbody.innerHTML = data.map(item => {
+    if (item.error) {
+      return `
+        <tr class="status-error">
+          <td class="setting-name-cell">
+            <div class="setting-name">${item.name}</div>
+            <div class="setting-explanation">${item.config.explanation}</div>
+          </td>
+          <td colspan="2" class="error-cell">
+            <span class="error-message">Unable to check: ${item.error}</span>
+          </td>
+          <td class="status-cell">
+            <span class="status-badge error">Error</span>
+          </td>
+          <td class="details-cell">
+            <details class="check-instructions">
+              <summary>How to check manually</summary>
+              <div class="instructions-content">
+                <p>${item.config.howToFix}</p>
+              </div>
+            </details>
+          </td>
+        </tr>
+      `;
+    }
+
+    const statusIcon = item.status === 'secure' ? '✓' : item.status === 'warning' ? '⚠' : '✗';
+
+    return `
+      <tr class="status-${item.status}">
+        <td class="setting-name-cell">
+          <div class="setting-name">${item.name}</div>
+          <div class="setting-explanation">${item.config.explanation}</div>
+        </td>
+        <td class="current-value-cell">
+          <span class="value-badge ${item.isRecommended ? 'good' : 'bad'}">${formatSettingValue(item.currentValue)}</span>
+        </td>
+        <td class="recommended-value-cell">
+          <span class="value-text">${formatSettingValue(item.recommendedValue)}</span>
+        </td>
+        <td class="status-cell">
+          <span class="status-badge ${item.status}">
+            ${statusIcon} ${item.status === 'secure' ? 'Secure' : item.status === 'warning' ? 'Warning' : 'Risky'}
+          </span>
+        </td>
+        <td class="details-cell">
+          ${!item.isRecommended ? `
+            <details class="check-instructions">
+              <summary>How to fix</summary>
+              <div class="instructions-content">
+                <p>${item.config.howToFix}</p>
+                ${item.check.levelOfControl && item.check.levelOfControl !== 'controllable_by_this_extension' ?
+                  `<p class="control-note">⚠️ This setting is managed by ${item.check.levelOfControl.replace(/_/g, ' ')}</p>` : ''}
+              </div>
+            </details>
+          ` : '<span class="ok-text">Configured correctly</span>'}
+        </td>
+      </tr>
+    `;
+  }).join('');
+}
+
+/**
+ * Render manual verification checklist as table (R3: Show verification timestamps)
+ */
+function renderManualChecklist() {
+  const tbody = document.getElementById('manual-checklist-body');
+
+  // Create table data array for sorting
+  const tableData = MANUAL_SECURITY_CHECKS.map(check => {
+    const checkState = browserSecurityAudit.manualChecks[check.id] || {};
+    const isVerified = checkState.verified || false;
+    const verifiedAt = checkState.verifiedAt || null;
+
+    return {
+      check: check,
+      isVerified: isVerified,
+      verifiedAt: verifiedAt || 0 // 0 for sorting unverified to bottom
+    };
+  });
+
+  // Store for sorting
+  window.manualChecklistData = tableData;
+
+  // Render table rows
+  tbody.innerHTML = tableData.map(item => {
+    const { check, isVerified, verifiedAt } = item;
+
+    return `
+      <tr class="${isVerified ? 'verified' : 'unverified'}">
+        <td class="checkbox-cell">
+          <input type="checkbox"
+                 id="manual-${check.id}"
+                 data-check-id="${check.id}"
+                 ${isVerified ? 'checked' : ''}
+                 aria-label="Mark ${check.name} as verified">
+        </td>
+        <td class="check-name-cell">
+          <div class="check-name">${check.name}</div>
+          <div class="check-explanation">${check.explanation}</div>
+        </td>
+        <td class="category-cell">
+          <span class="check-category category-${check.category.toLowerCase()}">${check.category}</span>
+        </td>
+        <td class="verified-cell">
+          ${isVerified && verifiedAt ? getTimeAgo(verifiedAt) : '<span class="unverified-text">Not verified</span>'}
+        </td>
+        <td class="instructions-cell">
+          <details class="check-instructions">
+            <summary>View Instructions</summary>
+            <div class="instructions-content">
+              <p><strong>Where to find it:</strong><br>${check.howToCheck}</p>
+              <p><strong>Recommended setting:</strong><br>${formatRecommendedValue(check.recommended)}</p>
+              ${check.howToFix ? `<p><strong>How to enable:</strong><br>${check.howToFix}</p>` : ''}
+            </div>
+          </details>
+        </td>
+      </tr>
+    `;
+  }).join('');
+
+  // Add event listeners for checkboxes
+  tbody.querySelectorAll('input[type="checkbox"]').forEach(checkbox => {
+    checkbox.addEventListener('change', handleManualCheckChange);
+  });
+}
+
+/**
+ * Format recommended value for manual checks
+ */
+function formatRecommendedValue(value) {
+  if (typeof value === 'boolean') {
+    return value ? 'Enabled' : 'Disabled';
+  }
+  return String(value);
+}
+
+/**
+ * Sort manual checklist table
+ */
+let manualChecklistSort = { column: 'category', direction: 'asc' };
+
+function sortManualChecklistTable(column) {
+  if (!window.manualChecklistData) return;
+
+  const data = [...window.manualChecklistData];
+
+  // Toggle direction if same column
+  if (manualChecklistSort.column === column) {
+    manualChecklistSort.direction = manualChecklistSort.direction === 'asc' ? 'desc' : 'asc';
+  } else {
+    manualChecklistSort.column = column;
+    manualChecklistSort.direction = column === 'verified' ? 'desc' : 'asc';
+  }
+
+  // Sort the data
+  data.sort((a, b) => {
+    let aVal, bVal;
+
+    switch (column) {
+      case 'name':
+        aVal = a.check.name.toLowerCase();
+        bVal = b.check.name.toLowerCase();
+        break;
+      case 'category':
+        const categoryOrder = { Critical: 3, Important: 2, Privacy: 1 };
+        aVal = categoryOrder[a.check.category] || 0;
+        bVal = categoryOrder[b.check.category] || 0;
+        break;
+      case 'verified':
+        aVal = a.verifiedAt;
+        bVal = b.verifiedAt;
+        break;
+      default:
+        return 0;
+    }
+
+    if (aVal < bVal) return manualChecklistSort.direction === 'asc' ? -1 : 1;
+    if (aVal > bVal) return manualChecklistSort.direction === 'asc' ? 1 : -1;
+    return 0;
+  });
+
+  // Update sort icons
+  document.querySelectorAll('#manual-checklist-table th.sortable').forEach(th => {
+    const icon = th.querySelector('.sort-icon');
+    th.classList.remove('sorted-asc', 'sorted-desc');
+    icon.textContent = '';
+
+    if (th.dataset.sort === column) {
+      th.classList.add(`sorted-${manualChecklistSort.direction}`);
+      icon.textContent = manualChecklistSort.direction === 'asc' ? '▲' : '▼';
+    }
+  });
+
+  // Re-render table
+  const tbody = document.getElementById('manual-checklist-body');
+  tbody.innerHTML = data.map(item => {
+    const { check, isVerified, verifiedAt } = item;
+
+    return `
+      <tr class="${isVerified ? 'verified' : 'unverified'}">
+        <td class="checkbox-cell">
+          <input type="checkbox"
+                 id="manual-${check.id}"
+                 data-check-id="${check.id}"
+                 ${isVerified ? 'checked' : ''}
+                 aria-label="Mark ${check.name} as verified">
+        </td>
+        <td class="check-name-cell">
+          <div class="check-name">${check.name}</div>
+          <div class="check-explanation">${check.explanation}</div>
+        </td>
+        <td class="category-cell">
+          <span class="check-category category-${check.category.toLowerCase()}">${check.category}</span>
+        </td>
+        <td class="verified-cell">
+          ${isVerified && verifiedAt ? getTimeAgo(verifiedAt) : '<span class="unverified-text">Not verified</span>'}
+        </td>
+        <td class="instructions-cell">
+          <details class="check-instructions">
+            <summary>View Instructions</summary>
+            <div class="instructions-content">
+              <p><strong>Where to find it:</strong><br>${check.howToCheck}</p>
+              <p><strong>Recommended setting:</strong><br>${formatRecommendedValue(check.recommended)}</p>
+              ${check.howToFix ? `<p><strong>How to enable:</strong><br>${check.howToFix}</p>` : ''}
+            </div>
+          </details>
+        </td>
+      </tr>
+    `;
+  }).join('');
+
+  // Re-attach event listeners for checkboxes
+  tbody.querySelectorAll('input[type="checkbox"]').forEach(checkbox => {
+    checkbox.addEventListener('change', handleManualCheckChange);
+  });
+}
+
+/**
+ * Get relative time string (R3: "Last verified: X ago")
+ */
+function getTimeAgo(timestamp) {
+  const now = Date.now();
+  const diff = now - timestamp;
+
+  const minutes = Math.floor(diff / 60000);
+  const hours = Math.floor(diff / 3600000);
+  const days = Math.floor(diff / 86400000);
+
+  if (minutes < 1) return 'just now';
+  if (minutes === 1) return '1 minute ago';
+  if (minutes < 60) return `${minutes} minutes ago`;
+  if (hours === 1) return '1 hour ago';
+  if (hours < 24) return `${hours} hours ago`;
+  if (days === 1) return '1 day ago';
+  if (days < 7) return `${days} days ago`;
+
+  return new Date(timestamp).toLocaleDateString();
+}
+
+/**
+ * Handle manual check checkbox change (R3: Store verification timestamp)
+ */
+async function handleManualCheckChange(e) {
+  const checkId = e.target.dataset.checkId;
+  const isChecked = e.target.checked;
+
+  if (isChecked) {
+    browserSecurityAudit.manualChecks[checkId] = {
+      verified: true,
+      verifiedAt: Date.now() // R3: Store timestamp when verified
+    };
+  } else {
+    delete browserSecurityAudit.manualChecks[checkId];
+  }
+
+  await saveManualCheckStates();
+  renderManualChecklist(); // Re-render to show/hide timestamp
+}
+
+/**
+ * Save manual check states to storage (R3: With timestamps)
+ */
+async function saveManualCheckStates() {
+  try {
+    await chrome.storage.local.set({
+      manualSecurityChecks: browserSecurityAudit.manualChecks
+    });
+  } catch (error) {
+    console.error('Failed to save manual check states:', error);
+  }
+}
+
+/**
+ * Load manual check states from storage (R3: With timestamps)
+ */
+async function loadManualCheckStates() {
+  try {
+    const result = await chrome.storage.local.get(['manualSecurityChecks']);
+    browserSecurityAudit.manualChecks = result.manualSecurityChecks || {};
+  } catch (error) {
+    console.error('Failed to load manual check states:', error);
+    browserSecurityAudit.manualChecks = {};
+  }
+}
+
+/**
+ * Update browser security score display
+ */
+function updateBrowserSecurityScore() {
+  const scoreValue = document.getElementById('browser-security-score');
+  const scoreDescription = document.getElementById('browser-score-description');
+  const secureCount = document.getElementById('secure-settings-count');
+  const warningCount = document.getElementById('warning-settings-count');
+  const riskyCount = document.getElementById('risky-settings-count');
+
+  if (!browserSecurityAudit.permissionGranted || Object.keys(browserSecurityAudit.automatedChecks).length === 0) {
+    scoreValue.textContent = '--';
+    scoreDescription.textContent = 'Enable automated checks for score';
+    secureCount.textContent = '0';
+    warningCount.textContent = '0';
+    riskyCount.textContent = '0';
+    return;
+  }
+
+  scoreValue.textContent = Math.round(browserSecurityAudit.score);
+
+  // Score description
+  const score = browserSecurityAudit.score;
+  if (score >= 90) {
+    scoreDescription.textContent = 'Excellent security configuration';
+  } else if (score >= 75) {
+    scoreDescription.textContent = 'Good security, minor improvements needed';
+  } else if (score >= 60) {
+    scoreDescription.textContent = 'Moderate security, several issues to address';
+  } else if (score >= 40) {
+    scoreDescription.textContent = 'Poor security, many risky settings detected';
+  } else {
+    scoreDescription.textContent = 'Critical security risks detected';
+  }
+
+  // Breakdown counts
+  secureCount.textContent = browserSecurityAudit.secureCount || 0;
+  warningCount.textContent = browserSecurityAudit.warningCount || 0;
+  riskyCount.textContent = browserSecurityAudit.riskyCount || 0;
 }

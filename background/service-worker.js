@@ -134,11 +134,45 @@ function calculateRiskScore(extension) {
 }
 
 /**
+ * Check if extension resources are available
+ */
+async function areResourcesReady() {
+  try {
+    // Try to fetch one of the icon files to see if resources are ready
+    const response = await fetch(chrome.runtime.getURL('icons/icon16-yellow.png'));
+    return response.ok;
+  } catch (error) {
+    return false;
+  }
+}
+
+// Track retry attempts for resource loading
+let iconUpdateRetries = 0;
+const MAX_ICON_UPDATE_RETRIES = 5;
+
+/**
  * Calculate overall security score and update badge
  * Combines extension security + browser security (50/50)
  */
 async function updateSecurityIcon() {
   try {
+    // Check if resources are ready before trying to set icon
+    const resourcesReady = await areResourcesReady();
+    if (!resourcesReady) {
+      if (iconUpdateRetries < MAX_ICON_UPDATE_RETRIES) {
+        iconUpdateRetries++;
+        console.log(`Extension resources not ready yet, retrying in 1s (attempt ${iconUpdateRetries}/${MAX_ICON_UPDATE_RETRIES})`);
+        setTimeout(() => updateSecurityIcon(), 1000);
+        return;
+      } else {
+        console.warn('Extension resources failed to load after multiple retries, giving up');
+        return;
+      }
+    }
+
+    // Resources are ready, reset retry counter for next time
+    iconUpdateRetries = 0;
+
     const extensions = await chrome.management.getAll();
 
     // Filter to extensions only (including this extension for full transparency)
@@ -189,7 +223,7 @@ async function updateSecurityIcon() {
     chrome.action.setBadgeText({ text: '' });
 
     // Switch icon based on score
-    chrome.action.setIcon({
+    await chrome.action.setIcon({
       path: {
         16: `icons/icon16-${iconColor}.png`,
         32: `icons/icon32-${iconColor}.png`,
@@ -202,6 +236,21 @@ async function updateSecurityIcon() {
 
   } catch (error) {
     console.error('Error updating security icon:', error);
+
+    // Fallback: try to set icon to yellow (default) if dynamic icon fails
+    try {
+      await chrome.action.setIcon({
+        path: {
+          16: 'icons/icon16-yellow.png',
+          32: 'icons/icon32-yellow.png',
+          48: 'icons/icon48-yellow.png',
+          128: 'icons/icon128-yellow.png'
+        }
+      });
+      console.log('Fallback: Using yellow (default) icon');
+    } catch (fallbackError) {
+      console.error('Even fallback icon failed:', fallbackError);
+    }
   }
 }
 
@@ -210,13 +259,14 @@ async function updateSecurityIcon() {
  */
 chrome.runtime.onInstalled.addListener((details) => {
   if (details.reason === 'install') {
-    console.log('Chrome Sentry installed');
+    console.log('Chrome Sentry installed - icon will be set to yellow (default from manifest)');
   } else if (details.reason === 'update') {
     console.log('Chrome Sentry updated to version', chrome.runtime.getManifest().version);
   }
 
-  // Update icon on install/update
-  updateSecurityIcon();
+  // Don't update icon on initial install - use manifest default (yellow)
+  // Icon will be updated when extensions change or browser security settings change
+  // This avoids race condition where service worker starts before extension resources are loaded
 });
 
 /**
@@ -308,7 +358,9 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   }
 });
 
-// Update icon when service worker starts
-updateSecurityIcon();
-
+// Don't update icon immediately on service worker start to avoid race condition
+// Icon will be updated when:
+// - Extension is installed/updated (onInstalled listener)
+// - Extensions are added/removed/enabled/disabled (management listeners)
+// - Browser security settings change (storage listener)
 console.log('Chrome Sentry service worker loaded');

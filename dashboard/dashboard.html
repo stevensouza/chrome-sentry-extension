@@ -22,6 +22,10 @@
           <span class="nav-icon">&#9881;</span>
           Extensions
         </a>
+        <a href="#" class="nav-item" data-tab="browser-security">
+          <span class="nav-icon">&#128274;</span>
+          Browser Security
+        </a>
       </nav>
       <div class="sidebar-footer">
         <span class="version">v1.0.0</span>
@@ -41,12 +45,22 @@
           <!-- Overall Score Card -->
           <div class="card score-card">
             <div class="card-header">
-              <h3>Security Score</h3>
+              <h3>Combined Security Score</h3>
+              <p class="card-hint">Extensions + Browser Security</p>
             </div>
             <div class="card-body">
               <div class="score-display">
                 <span class="score-value" id="overall-score">--</span>
                 <span class="score-max">/100</span>
+              </div>
+              <div class="score-breakdown-dashboard">
+                <span class="breakdown-item">
+                  Extensions: <strong id="extension-score-dash">--</strong>
+                </span>
+                <span class="breakdown-separator">|</span>
+                <span class="breakdown-item">
+                  Browser: <strong id="browser-score-dash">--</strong>
+                </span>
               </div>
               <div class="score-bar">
                 <div class="score-bar-fill" id="score-bar-fill"></div>
@@ -112,6 +126,34 @@
                 <div class="summary-stat clickable" data-filter="disabled" title="View disabled extensions">
                   <span class="stat-value" id="disabled-extensions">0</span>
                   <span class="stat-label">Disabled</span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Usage Analytics Card -->
+          <div class="card usage-card">
+            <div class="card-header">
+              <h3>Usage Tracking</h3>
+              <p class="card-hint">Tag extensions to track which you actually use</p>
+            </div>
+            <div class="card-body">
+              <div class="usage-stats">
+                <div class="usage-stat actively-used clickable" data-usage="actively-used" title="Click to view actively used extensions">
+                  <span class="stat-count" id="actively-used-count">0</span>
+                  <span class="stat-label">Actively Used</span>
+                </div>
+                <div class="usage-stat rarely-used clickable" data-usage="rarely-used" title="Click to view rarely used extensions">
+                  <span class="stat-count" id="rarely-used-count">0</span>
+                  <span class="stat-label">Rarely Used</span>
+                </div>
+                <div class="usage-stat can-remove clickable" data-usage="can-remove" title="Click to view extensions you can remove">
+                  <span class="stat-count" id="can-remove-count">0</span>
+                  <span class="stat-label">Can Remove</span>
+                </div>
+                <div class="usage-stat untagged clickable" data-usage="untagged" title="Click to view untagged extensions">
+                  <span class="stat-count" id="untagged-count">0</span>
+                  <span class="stat-label">Not Tagged</span>
                 </div>
               </div>
             </div>
@@ -227,6 +269,13 @@
               <option value="enabled">Enabled</option>
               <option value="disabled">Disabled</option>
             </select>
+            <select id="usage-filter" aria-label="Filter by usage tag">
+              <option value="all">All Usage Tags</option>
+              <option value="actively-used">Actively Used</option>
+              <option value="rarely-used">Rarely Used</option>
+              <option value="can-remove">Can Remove</option>
+              <option value="untagged">Not Tagged</option>
+            </select>
           </div>
         </div>
 
@@ -234,6 +283,138 @@
           <!-- Extensions will be populated here -->
           <div class="loading-state">
             <p>Loading extensions...</p>
+          </div>
+        </div>
+      </section>
+
+      <!-- Browser Security Tab -->
+      <section id="browser-security-tab" class="tab-content">
+        <header class="content-header">
+          <h2>Browser Security Audit</h2>
+          <p>Review your Chrome security and privacy settings</p>
+        </header>
+
+        <!-- Permission Toggle Card -->
+        <div class="permission-toggle-card">
+          <div class="toggle-header">
+            <div class="toggle-title">
+              <h3>&#129302; Automated Security Checks</h3>
+              <p class="toggle-subtitle">Let Chrome Sentry scan your browser settings</p>
+            </div>
+            <label class="toggle-switch" aria-label="Enable automated security checks">
+              <input type="checkbox" id="automated-checks-toggle">
+              <span class="toggle-slider"></span>
+            </label>
+          </div>
+          <div class="permission-explanation">
+            <p><strong>When enabled:</strong> Chrome will show a permission prompt.</p>
+            <p class="permission-warning">⚠️ Chrome's message says: <em>"Change your privacy-related settings"</em></p>
+            <p><strong>We only READ settings</strong> to audit your security. We never modify anything.</p>
+            <p class="permission-note">You can turn this off anytime to revoke the permission.</p>
+          </div>
+        </div>
+
+        <!-- Automated Checks Section (visible when permission granted) -->
+        <div class="audit-section" id="automated-checks-section" style="display: none;">
+          <div class="section-header">
+            <div class="section-title">
+              <h3>&#129302; Automated Security Checks</h3>
+              <p>Settings checked via Chrome Privacy API</p>
+            </div>
+            <div class="section-actions">
+              <div class="last-checked" id="last-checked-display" style="display: none;">
+                <span>Last checked: <span id="last-checked-time">--</span></span>
+              </div>
+              <button class="btn-secondary" id="recheck-settings-btn" aria-label="Re-check security settings">
+                &#128260; Re-check
+              </button>
+            </div>
+          </div>
+          <div class="table-container">
+            <table class="automated-checks-table" id="automated-checks-table">
+              <thead>
+                <tr>
+                  <th class="sortable" data-sort="name">
+                    Setting Name
+                    <span class="sort-icon"></span>
+                  </th>
+                  <th class="sortable" data-sort="current">
+                    Current Value
+                    <span class="sort-icon"></span>
+                  </th>
+                  <th>Recommended</th>
+                  <th class="sortable" data-sort="status">
+                    Status
+                    <span class="sort-icon"></span>
+                  </th>
+                  <th>Details</th>
+                </tr>
+              </thead>
+              <tbody id="automated-checks-body">
+                <!-- Automated check results will be populated here -->
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- Manual Checklist Section (always visible) -->
+        <div class="audit-section">
+          <div class="section-header">
+            <div class="section-title">
+              <h3>&#128203; Manual Verification Checklist</h3>
+              <p>Important settings that require manual verification</p>
+            </div>
+          </div>
+          <div class="table-container">
+            <table class="manual-checklist-table" id="manual-checklist-table">
+              <thead>
+                <tr>
+                  <th class="checkbox-col">✓</th>
+                  <th class="sortable" data-sort="name">
+                    Check Name
+                    <span class="sort-icon"></span>
+                  </th>
+                  <th class="sortable" data-sort="category">
+                    Category
+                    <span class="sort-icon"></span>
+                  </th>
+                  <th class="sortable" data-sort="verified">
+                    Last Verified
+                    <span class="sort-icon"></span>
+                  </th>
+                  <th>Instructions</th>
+                </tr>
+              </thead>
+              <tbody id="manual-checklist-body">
+                <!-- Manual checklist rows will be populated here -->
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- Security Score Summary -->
+        <div class="audit-summary">
+          <div class="summary-card">
+            <h3>Browser Security Score</h3>
+            <div class="score-display">
+              <span class="score-value" id="browser-security-score">--</span>
+              <span class="score-max">/100</span>
+            </div>
+            <p class="score-description" id="browser-score-description">Enable automated checks for score</p>
+          </div>
+          <div class="summary-breakdown">
+            <div class="breakdown-item secure">
+              <span class="count" id="secure-settings-count">0</span>
+              <span class="label">Secure</span>
+            </div>
+            <div class="breakdown-item warning">
+              <span class="count" id="warning-settings-count">0</span>
+              <span class="label">Needs Attention</span>
+            </div>
+            <div class="breakdown-item risky">
+              <span class="count" id="risky-settings-count">0</span>
+              <span class="label">Risky</span>
+            </div>
           </div>
         </div>
       </section>
@@ -268,6 +449,26 @@
               <span class="info-label">ID:</span>
               <span class="info-value small" id="detail-id">-</span>
             </div>
+          </div>
+        </section>
+
+        <!-- Usage Tag Selector -->
+        <section class="details-section usage-tag-section">
+          <h3>Usage Tracking</h3>
+          <p class="section-description">Mark how often you use this extension</p>
+          <div class="usage-tag-selector">
+            <button class="tag-btn" data-tag="actively-used" aria-label="Mark as actively used">
+              <span class="tag-icon">✓</span> I use this
+            </button>
+            <button class="tag-btn" data-tag="rarely-used" aria-label="Mark as rarely used">
+              <span class="tag-icon">~</span> Rarely use
+            </button>
+            <button class="tag-btn" data-tag="can-remove" aria-label="Mark as can remove">
+              <span class="tag-icon">✗</span> Can remove
+            </button>
+            <button class="tag-btn clear-tag" data-tag="" aria-label="Clear usage tag">
+              Clear tag
+            </button>
           </div>
         </section>
 
